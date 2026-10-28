@@ -1,0 +1,700 @@
+\begin{lexlean}{Blake3}
+\useglossary{lexlean.std.nat@1.2.0}
+\title{Natural number addition}
+\begin{semanticmodule}
+structure{
+  name: Cv,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: h0, type: UInt32},
+    {name: h1, type: UInt32},
+    {name: h2, type: UInt32},
+    {name: h3, type: UInt32},
+    {name: h4, type: UInt32},
+    {name: h5, type: UInt32},
+    {name: h6, type: UInt32},
+    {name: h7, type: UInt32}
+  ]
+}
+
+structure{
+  name: Words16,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: v0, type: UInt32},
+    {name: v1, type: UInt32},
+    {name: v2, type: UInt32},
+    {name: v3, type: UInt32},
+    {name: v4, type: UInt32},
+    {name: v5, type: UInt32},
+    {name: v6, type: UInt32},
+    {name: v7, type: UInt32},
+    {name: v8, type: UInt32},
+    {name: v9, type: UInt32},
+    {name: v10, type: UInt32},
+    {name: v11, type: UInt32},
+    {name: v12, type: UInt32},
+    {name: v13, type: UInt32},
+    {name: v14, type: UInt32},
+    {name: v15, type: UInt32}
+  ]
+}
+
+structure{
+  name: Quad,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: qa, type: UInt32},
+    {name: qb, type: UInt32},
+    {name: qc, type: UInt32},
+    {name: qd, type: UInt32}
+  ]
+}
+
+structure{
+  name: Output,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: chain, type: Cv},
+    {name: block, type: Words16},
+    {name: counter, type: Nat},
+    {name: blockLen, type: UInt32},
+    {name: flags, type: UInt32}
+  ]
+}
+
+structure{
+  name: Hasher,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: keyWords, type: Cv},
+    {name: modeFlags, type: UInt32},
+    {name: chunkCount, type: Nat},
+    {name: pending, type: Bytes},
+    {name: stack, type: (List Cv)}
+  ]
+}
+
+inductive{
+  name: Mode,
+  type_parameters: [],
+  parameters: [],
+  constructors: [
+    {name: hashMode, fields: []},
+    {name: keyedMode, fields: [Bytes]},
+    {name: deriveMode, fields: [Bytes]}
+  ]
+}
+
+inductive{
+  name: Blake3Error,
+  type_parameters: [],
+  parameters: [],
+  constructors: [{name: keyLength, fields: [Nat]}]
+}
+
+definition{
+  name: widen,
+  parameters: [value : UInt32],
+  result: UInt64,
+  body: (match (prim checked_convert value : (Option UInt64))
+    | Option.some wide => wide
+    | Option.none => (0 : UInt64)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: narrow,
+  parameters: [value : UInt64],
+  result: UInt32,
+  body: (match (prim checked_convert (prim bit_and value (4294967295 : UInt64) : UInt64) : (Option UInt32))
+    | Option.some low => low
+    | Option.none => (0 : UInt32)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: add,
+  parameters: [left : UInt32, right : UInt32],
+  result: UInt32,
+  body: (match (prim checked_add (widen left) (widen right) : (Option UInt64))
+    | Option.some sum => (narrow sum)
+    | Option.none => (0 : UInt32)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: shiftRight,
+  parameters: [value : UInt32, amount : UInt32],
+  result: UInt32,
+  body: (match (prim shift_right value amount : (Option UInt32))
+    | Option.some shifted => shifted
+    | Option.none => (0 : UInt32)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: shiftLeft,
+  parameters: [value : UInt32, amount : UInt32],
+  result: UInt32,
+  body: (match (prim shift_left value amount : (Option UInt32))
+    | Option.some shifted => shifted
+    | Option.none => (0 : UInt32)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: rotateRight,
+  parameters: [value : UInt32, amount : UInt32, complement : UInt32],
+  result: UInt32,
+  body: (prim bit_or (shiftRight value amount) (shiftLeft value complement) : UInt32),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: xor,
+  parameters: [left : UInt32, right : UInt32],
+  result: UInt32,
+  body: (prim bit_xor left right : UInt32),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: gcore,
+  parameters: [a : UInt32, b : UInt32, c : UInt32, d : UInt32, x : UInt32, y : UInt32],
+  result: Quad,
+  body: (let a1 : UInt32 := (add (add a b) x); (let d1 : UInt32 := (rotateRight (xor d a1) (16 : UInt32) (16 : UInt32)); (let c1 : UInt32 := (add c d1); (let b1 : UInt32 := (rotateRight (xor b c1) (12 : UInt32) (20 : UInt32)); (let a2 : UInt32 := (add (add a1 b1) y); (let d2 : UInt32 := (rotateRight (xor d1 a2) (8 : UInt32) (24 : UInt32)); (let c2 : UInt32 := (add c1 d2); (let b2 : UInt32 := (rotateRight (xor b1 c2) (7 : UInt32) (25 : UInt32)); (record Quad {qa := a2, qb := b2, qc := c2, qd := d2}))))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: g0,
+  parameters: [s : Words16, m : Words16],
+  result: Words16,
+  body: (let q : Quad := (gcore (project s v0) (project s v4) (project s v8) (project s v12) (project m v0) (project m v1)); (record Words16 {v0 := (project q qa), v1 := (project s v1), v2 := (project s v2), v3 := (project s v3), v4 := (project q qb), v5 := (project s v5), v6 := (project s v6), v7 := (project s v7), v8 := (project q qc), v9 := (project s v9), v10 := (project s v10), v11 := (project s v11), v12 := (project q qd), v13 := (project s v13), v14 := (project s v14), v15 := (project s v15)})),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: g1,
+  parameters: [s : Words16, m : Words16],
+  result: Words16,
+  body: (let q : Quad := (gcore (project s v1) (project s v5) (project s v9) (project s v13) (project m v2) (project m v3)); (record Words16 {v0 := (project s v0), v1 := (project q qa), v2 := (project s v2), v3 := (project s v3), v4 := (project s v4), v5 := (project q qb), v6 := (project s v6), v7 := (project s v7), v8 := (project s v8), v9 := (project q qc), v10 := (project s v10), v11 := (project s v11), v12 := (project s v12), v13 := (project q qd), v14 := (project s v14), v15 := (project s v15)})),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: g2,
+  parameters: [s : Words16, m : Words16],
+  result: Words16,
+  body: (let q : Quad := (gcore (project s v2) (project s v6) (project s v10) (project s v14) (project m v4) (project m v5)); (record Words16 {v0 := (project s v0), v1 := (project s v1), v2 := (project q qa), v3 := (project s v3), v4 := (project s v4), v5 := (project s v5), v6 := (project q qb), v7 := (project s v7), v8 := (project s v8), v9 := (project s v9), v10 := (project q qc), v11 := (project s v11), v12 := (project s v12), v13 := (project s v13), v14 := (project q qd), v15 := (project s v15)})),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: g3,
+  parameters: [s : Words16, m : Words16],
+  result: Words16,
+  body: (let q : Quad := (gcore (project s v3) (project s v7) (project s v11) (project s v15) (project m v6) (project m v7)); (record Words16 {v0 := (project s v0), v1 := (project s v1), v2 := (project s v2), v3 := (project q qa), v4 := (project s v4), v5 := (project s v5), v6 := (project s v6), v7 := (project q qb), v8 := (project s v8), v9 := (project s v9), v10 := (project s v10), v11 := (project q qc), v12 := (project s v12), v13 := (project s v13), v14 := (project s v14), v15 := (project q qd)})),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: g4,
+  parameters: [s : Words16, m : Words16],
+  result: Words16,
+  body: (let q : Quad := (gcore (project s v0) (project s v5) (project s v10) (project s v15) (project m v8) (project m v9)); (record Words16 {v0 := (project q qa), v1 := (project s v1), v2 := (project s v2), v3 := (project s v3), v4 := (project s v4), v5 := (project q qb), v6 := (project s v6), v7 := (project s v7), v8 := (project s v8), v9 := (project s v9), v10 := (project q qc), v11 := (project s v11), v12 := (project s v12), v13 := (project s v13), v14 := (project s v14), v15 := (project q qd)})),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: g5,
+  parameters: [s : Words16, m : Words16],
+  result: Words16,
+  body: (let q : Quad := (gcore (project s v1) (project s v6) (project s v11) (project s v12) (project m v10) (project m v11)); (record Words16 {v0 := (project s v0), v1 := (project q qa), v2 := (project s v2), v3 := (project s v3), v4 := (project s v4), v5 := (project s v5), v6 := (project q qb), v7 := (project s v7), v8 := (project s v8), v9 := (project s v9), v10 := (project s v10), v11 := (project q qc), v12 := (project q qd), v13 := (project s v13), v14 := (project s v14), v15 := (project s v15)})),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: g6,
+  parameters: [s : Words16, m : Words16],
+  result: Words16,
+  body: (let q : Quad := (gcore (project s v2) (project s v7) (project s v8) (project s v13) (project m v12) (project m v13)); (record Words16 {v0 := (project s v0), v1 := (project s v1), v2 := (project q qa), v3 := (project s v3), v4 := (project s v4), v5 := (project s v5), v6 := (project s v6), v7 := (project q qb), v8 := (project q qc), v9 := (project s v9), v10 := (project s v10), v11 := (project s v11), v12 := (project s v12), v13 := (project q qd), v14 := (project s v14), v15 := (project s v15)})),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: g7,
+  parameters: [s : Words16, m : Words16],
+  result: Words16,
+  body: (let q : Quad := (gcore (project s v3) (project s v4) (project s v9) (project s v14) (project m v14) (project m v15)); (record Words16 {v0 := (project s v0), v1 := (project s v1), v2 := (project s v2), v3 := (project q qa), v4 := (project q qb), v5 := (project s v5), v6 := (project s v6), v7 := (project s v7), v8 := (project s v8), v9 := (project q qc), v10 := (project s v10), v11 := (project s v11), v12 := (project s v12), v13 := (project s v13), v14 := (project q qd), v15 := (project s v15)})),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: round,
+  parameters: [s : Words16, m : Words16],
+  result: Words16,
+  body: (g7 (g6 (g5 (g4 (g3 (g2 (g1 (g0 s m) m) m) m) m) m) m) m),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: permute,
+  parameters: [m : Words16],
+  result: Words16,
+  body: (record Words16 {v0 := (project m v2), v1 := (project m v6), v2 := (project m v3), v3 := (project m v10), v4 := (project m v7), v5 := (project m v0), v6 := (project m v4), v7 := (project m v13), v8 := (project m v1), v9 := (project m v11), v10 := (project m v12), v11 := (project m v5), v12 := (project m v9), v13 := (project m v14), v14 := (project m v15), v15 := (project m v8)}),
+  executable: true
+}
+
+definition{
+  name: iv,
+  parameters: [],
+  result: Cv,
+  body: (record Cv {h0 := (1779033703 : UInt32), h1 := (3144134277 : UInt32), h2 := (1013904242 : UInt32), h3 := (2773480762 : UInt32), h4 := (1359893119 : UInt32), h5 := (2600822924 : UInt32), h6 := (528734635 : UInt32), h7 := (1541459225 : UInt32)}),
+  executable: true
+}
+
+definition{
+  name: flagChunkStart,
+  parameters: [],
+  result: UInt32,
+  body: (1 : UInt32),
+  executable: true
+}
+
+definition{name: flagChunkEnd, parameters: [], result: UInt32, body: (2 : UInt32), executable: true}
+
+definition{name: flagParent, parameters: [], result: UInt32, body: (4 : UInt32), executable: true}
+
+definition{name: flagRoot, parameters: [], result: UInt32, body: (8 : UInt32), executable: true}
+
+definition{
+  name: flagKeyedHash,
+  parameters: [],
+  result: UInt32,
+  body: (16 : UInt32),
+  executable: true
+}
+
+definition{
+  name: flagDeriveKeyContext,
+  parameters: [],
+  result: UInt32,
+  body: (32 : UInt32),
+  executable: true
+}
+
+definition{
+  name: flagDeriveKeyMaterial,
+  parameters: [],
+  result: UInt32,
+  body: (64 : UInt32),
+  executable: true
+}
+
+definition{
+  name: compress,
+  parameters: [
+    cv : Cv,
+    m : Words16,
+    counterLo : UInt32,
+    counterHi : UInt32,
+    blockLen : UInt32,
+    flags : UInt32
+  ],
+  result: Words16,
+  body: (let s : Words16 := (first (prim iterate (fun (p : (Words16 * Words16)) => ((round (first p) (second p)), (permute (second p)))) 7 ((record Words16 {v0 := (project cv h0), v1 := (project cv h1), v2 := (project cv h2), v3 := (project cv h3), v4 := (project cv h4), v5 := (project cv h5), v6 := (project cv h6), v7 := (project cv h7), v8 := (1779033703 : UInt32), v9 := (3144134277 : UInt32), v10 := (1013904242 : UInt32), v11 := (2773480762 : UInt32), v12 := counterLo, v13 := counterHi, v14 := blockLen, v15 := flags}), m) : (Words16 * Words16))); (record Words16 {v0 := (xor (project s v0) (project s v8)), v1 := (xor (project s v1) (project s v9)), v2 := (xor (project s v2) (project s v10)), v3 := (xor (project s v3) (project s v11)), v4 := (xor (project s v4) (project s v12)), v5 := (xor (project s v5) (project s v13)), v6 := (xor (project s v6) (project s v14)), v7 := (xor (project s v7) (project s v15)), v8 := (xor (project s v8) (project cv h0)), v9 := (xor (project s v9) (project cv h1)), v10 := (xor (project s v10) (project cv h2)), v11 := (xor (project s v11) (project cv h3)), v12 := (xor (project s v12) (project cv h4)), v13 := (xor (project s v13) (project cv h5)), v14 := (xor (project s v14) (project cv h6)), v15 := (xor (project s v15) (project cv h7))})),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: cvOf,
+  parameters: [w : Words16],
+  result: Cv,
+  body: (record Cv {h0 := (project w v0), h1 := (project w v1), h2 := (project w v2), h3 := (project w v3), h4 := (project w v4), h5 := (project w v5), h6 := (project w v6), h7 := (project w v7)}),
+  executable: true
+}
+
+definition{
+  name: wordOfNat,
+  parameters: [value : Nat, width : Nat],
+  result: UInt32,
+  body: (second (second (prim iterate (fun (bits : (Nat * (UInt32 * UInt32))) => (let remaining : Nat := (first bits); (let mask : UInt32 := (first (second bits)); (let acc : UInt32 := (second (second bits)); ((prim quotient remaining 2 0 : Nat), ((shiftLeft mask (1 : UInt32)), (if ((prim remainder remaining 2 0 : Nat) =? 1) then (prim bit_or acc mask : UInt32) else acc))))))) width (value, ((1 : UInt32), (0 : UInt32))) : (Nat * (UInt32 * UInt32))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: counterLow,
+  parameters: [count : Nat],
+  result: UInt32,
+  body: (wordOfNat (prim remainder count 4294967296 0 : Nat) 32),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: counterHigh,
+  parameters: [count : Nat],
+  result: UInt32,
+  body: (if (count <? 4294967296) then (0 : UInt32) else (wordOfNat (prim quotient count 4294967296 0 : Nat) 32)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: byteAt,
+  parameters: [message : Bytes, size : Nat, position : Nat],
+  result: UInt32,
+  body: (if (position <? size) then (match (prim index message position : (Option UInt8))
+    | Option.some byte => (match (prim checked_convert byte : (Option UInt32))
+      | Option.some widened => widened
+      | Option.none => (0 : UInt32))
+    | Option.none => (0 : UInt32)) else (0 : UInt32)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: wordLE,
+  parameters: [b0 : UInt32, b1 : UInt32, b2 : UInt32, b3 : UInt32],
+  result: UInt32,
+  body: (prim bit_or b0 (prim bit_or (shiftLeft b1 (8 : UInt32)) (prim bit_or (shiftLeft b2 (16 : UInt32)) (shiftLeft b3 (24 : UInt32)) : UInt32) : UInt32) : UInt32),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: blockWord,
+  parameters: [message : Bytes, size : Nat, offset : Nat],
+  result: UInt32,
+  body: (wordLE (byteAt message size offset) (byteAt message size (offset + 1)) (byteAt message size (offset + 2)) (byteAt message size (offset + 3))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: loadBlock,
+  parameters: [message : Bytes, size : Nat, offset : Nat],
+  result: Words16,
+  body: (record Words16 {v0 := (blockWord message size (offset + 0)), v1 := (blockWord message size (offset + 4)), v2 := (blockWord message size (offset + 8)), v3 := (blockWord message size (offset + 12)), v4 := (blockWord message size (offset + 16)), v5 := (blockWord message size (offset + 20)), v6 := (blockWord message size (offset + 24)), v7 := (blockWord message size (offset + 28)), v8 := (blockWord message size (offset + 32)), v9 := (blockWord message size (offset + 36)), v10 := (blockWord message size (offset + 40)), v11 := (blockWord message size (offset + 44)), v12 := (blockWord message size (offset + 48)), v13 := (blockWord message size (offset + 52)), v14 := (blockWord message size (offset + 56)), v15 := (blockWord message size (offset + 60))}),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: keyWordsOf,
+  parameters: [material : Bytes],
+  result: Cv,
+  body: (cvOf (loadBlock material (prim length material : Nat) 0)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: lastOffset,
+  parameters: [len : Nat],
+  result: Nat,
+  body: (if (len =? 0) then 0 else (prim multiply (prim quotient (prim subtract len 1 : Nat) 64 0 : Nat) 64 : Nat)),
+  executable: true
+}
+
+definition{
+  name: startFlag,
+  parameters: [offset : Nat],
+  result: UInt32,
+  body: (if (offset =? 0) then (flagChunkStart) else (0 : UInt32)),
+  executable: true
+}
+
+definition{
+  name: chunkOutput,
+  parameters: [key : Cv, base : UInt32, message : Bytes, begin : Nat, len : Nat, chunk : Nat],
+  result: Output,
+  body: (let limit : Nat := (begin + len); (let last : Nat := (lastOffset len); (let lo : UInt32 := (counterLow chunk); (let hi : UInt32 := (counterHigh chunk); (let walked : (Nat * Cv) := (prim iterate (fun [base, begin, hi, limit, lo, message] (walk : (Nat * Cv)) => (let pos : Nat := (first walk); ((pos + 64), (cvOf (compress (second walk) (loadBlock message limit (begin + pos)) lo hi (64 : UInt32) (prim bit_or base (startFlag pos) : UInt32)))))) (prim quotient last 64 0 : Nat) (0, key) : (Nat * Cv)); (record Output {chain := (second walked), block := (loadBlock message limit (begin + last)), counter := chunk, blockLen := (wordOfNat (prim subtract len last : Nat) 7), flags := (prim bit_or base (prim bit_or (flagChunkEnd) (startFlag last) : UInt32) : UInt32)})))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: chainOf,
+  parameters: [node : Output],
+  result: Cv,
+  body: (cvOf (compress (project node chain) (project node block) (counterLow (project node counter)) (counterHigh (project node counter)) (project node blockLen) (project node flags))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: rootWords,
+  parameters: [node : Output, index : Nat],
+  result: Words16,
+  body: (compress (project node chain) (project node block) (counterLow index) (counterHigh index) (project node blockLen) (prim bit_or (project node flags) (flagRoot) : UInt32)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: parentOutput,
+  parameters: [left : Cv, right : Cv, key : Cv, base : UInt32],
+  result: Output,
+  body: (record Output {chain := key, block := (record Words16 {v0 := (project left h0), v1 := (project left h1), v2 := (project left h2), v3 := (project left h3), v4 := (project left h4), v5 := (project left h5), v6 := (project left h6), v7 := (project left h7), v8 := (project right h0), v9 := (project right h1), v10 := (project right h2), v11 := (project right h3), v12 := (project right h4), v13 := (project right h5), v14 := (project right h6), v15 := (project right h7)}), counter := 0, blockLen := (64 : UInt32), flags := (prim bit_or base (flagParent) : UInt32)}),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: mergeStep,
+  parameters: [key : Cv, base : UInt32, merging : (Cv * (Nat * (List Cv)))],
+  result: (Option (Cv * (Nat * (List Cv)))),
+  body: (let total : Nat := (first (second merging)); (if ((prim remainder total 2 0 : Nat) =? 0) then (match (second (second merging))
+    | List.cons top rest => (ctor Option.some [(Cv * (Nat * (List Cv)))] ((chainOf (parentOutput top (first merging) key base)), ((prim quotient total 2 0 : Nat), rest)))
+    | List.nil => (ctor Option.none [(Cv * (Nat * (List Cv)))])) else (ctor Option.none [(Cv * (Nat * (List Cv)))]))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: pushChunk,
+  parameters: [key : Cv, base : UInt32, stack : (List Cv), fresh : Cv, total : Nat],
+  result: (List Cv),
+  body: (let merged : (Cv * (Nat * (List Cv))) := (first (prim iterate_until (fun [base, key] (merging : (Cv * (Nat * (List Cv)))) => (mergeStep key base merging)) 64 (fresh, (total, stack)) : ((Cv * (Nat * (List Cv))) * Bool))); (cons (first merged) (second (second merged)))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: hasherWith,
+  parameters: [key : Cv, base : UInt32],
+  result: Hasher,
+  body: (record Hasher {keyWords := key, modeFlags := base, chunkCount := 0, pending := 0x, stack := (nil Cv)}),
+  executable: true
+}
+
+definition{
+  name: update,
+  parameters: [state : Hasher, input : Bytes],
+  result: Hasher,
+  body: (let joined : Bytes := (prim append (project state pending) input : Bytes); (let size : Nat := (prim length joined : Nat); (let full : Nat := (if (size =? 0) then 0 else (prim quotient (prim subtract size 1 : Nat) 1024 0 : Nat)); (let base : UInt32 := (project state modeFlags); (let key : Cv := (project state keyWords); (let committed : (Nat * (List Cv)) := (prim iterate (fun [base, joined, key, state] (progress : (Nat * (List Cv))) => (let chunk : Nat := ((project state chunkCount) + (first progress)); (((first progress) + 1), (pushChunk key base (second progress) (chainOf (chunkOutput key base joined (prim multiply (first progress) 1024 : Nat) 1024 chunk)) (chunk + 1))))) full (0, (project state stack)) : (Nat * (List Cv))); (let kept : Nat := (prim multiply full 1024 : Nat); (record Hasher {keyWords := key, modeFlags := base, chunkCount := ((project state chunkCount) + full), pending := (match (prim slice joined kept (prim subtract size kept : Nat) : (Option Bytes))
+    | Option.some rest => rest
+    | Option.none => 0x), stack := (second committed)})))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: finalOutput,
+  parameters: [state : Hasher],
+  result: Output,
+  body: (let key : Cv := (project state keyWords); (let base : UInt32 := (project state modeFlags); (let tail : Bytes := (project state pending); (prim list_fold (fun [base, key] (node : Output) (left : Cv) => (parentOutput left (chainOf node) key base)) (chunkOutput key base tail 0 (prim length tail : Nat) (project state chunkCount)) (project state stack) : Output)))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: byteOf,
+  parameters: [octet : UInt32],
+  result: Bytes,
+  body: (if (prim equal (prim bit_and octet (128 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (64 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (32 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (16 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x00 else 0x01) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x02 else 0x03)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x04 else 0x05) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x06 else 0x07))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x08 else 0x09) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x0a else 0x0b)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x0c else 0x0d) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x0e else 0x0f)))) else (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x10 else 0x11) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x12 else 0x13)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x14 else 0x15) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x16 else 0x17))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x18 else 0x19) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x1a else 0x1b)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x1c else 0x1d) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x1e else 0x1f))))) else (if (prim equal (prim bit_and octet (16 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x20 else 0x21) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x22 else 0x23)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x24 else 0x25) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x26 else 0x27))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x28 else 0x29) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x2a else 0x2b)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x2c else 0x2d) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x2e else 0x2f)))) else (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x30 else 0x31) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x32 else 0x33)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x34 else 0x35) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x36 else 0x37))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x38 else 0x39) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x3a else 0x3b)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x3c else 0x3d) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x3e else 0x3f)))))) else (if (prim equal (prim bit_and octet (32 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (16 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x40 else 0x41) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x42 else 0x43)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x44 else 0x45) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x46 else 0x47))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x48 else 0x49) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x4a else 0x4b)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x4c else 0x4d) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x4e else 0x4f)))) else (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x50 else 0x51) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x52 else 0x53)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x54 else 0x55) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x56 else 0x57))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x58 else 0x59) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x5a else 0x5b)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x5c else 0x5d) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x5e else 0x5f))))) else (if (prim equal (prim bit_and octet (16 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x60 else 0x61) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x62 else 0x63)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x64 else 0x65) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x66 else 0x67))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x68 else 0x69) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x6a else 0x6b)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x6c else 0x6d) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x6e else 0x6f)))) else (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x70 else 0x71) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x72 else 0x73)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x74 else 0x75) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x76 else 0x77))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x78 else 0x79) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x7a else 0x7b)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x7c else 0x7d) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x7e else 0x7f))))))) else (if (prim equal (prim bit_and octet (64 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (32 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (16 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x80 else 0x81) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x82 else 0x83)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x84 else 0x85) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x86 else 0x87))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x88 else 0x89) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x8a else 0x8b)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x8c else 0x8d) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x8e else 0x8f)))) else (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x90 else 0x91) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x92 else 0x93)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x94 else 0x95) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x96 else 0x97))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x98 else 0x99) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x9a else 0x9b)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x9c else 0x9d) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x9e else 0x9f))))) else (if (prim equal (prim bit_and octet (16 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xa0 else 0xa1) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xa2 else 0xa3)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xa4 else 0xa5) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xa6 else 0xa7))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xa8 else 0xa9) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xaa else 0xab)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xac else 0xad) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xae else 0xaf)))) else (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xb0 else 0xb1) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xb2 else 0xb3)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xb4 else 0xb5) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xb6 else 0xb7))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xb8 else 0xb9) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xba else 0xbb)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xbc else 0xbd) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xbe else 0xbf)))))) else (if (prim equal (prim bit_and octet (32 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (16 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xc0 else 0xc1) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xc2 else 0xc3)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xc4 else 0xc5) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xc6 else 0xc7))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xc8 else 0xc9) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xca else 0xcb)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xcc else 0xcd) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xce else 0xcf)))) else (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xd0 else 0xd1) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xd2 else 0xd3)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xd4 else 0xd5) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xd6 else 0xd7))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xd8 else 0xd9) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xda else 0xdb)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xdc else 0xdd) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xde else 0xdf))))) else (if (prim equal (prim bit_and octet (16 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xe0 else 0xe1) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xe2 else 0xe3)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xe4 else 0xe5) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xe6 else 0xe7))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xe8 else 0xe9) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xea else 0xeb)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xec else 0xed) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xee else 0xef)))) else (if (prim equal (prim bit_and octet (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xf0 else 0xf1) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xf2 else 0xf3)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xf4 else 0xf5) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xf6 else 0xf7))) else (if (prim equal (prim bit_and octet (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xf8 else 0xf9) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xfa else 0xfb)) else (if (prim equal (prim bit_and octet (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xfc else 0xfd) else (if (prim equal (prim bit_and octet (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0xfe else 0xff)))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: wordBytes,
+  parameters: [word : UInt32],
+  result: Bytes,
+  body: (prim append (byteOf (prim bit_and word (255 : UInt32) : UInt32)) (prim append (byteOf (prim bit_and (shiftRight word (8 : UInt32)) (255 : UInt32) : UInt32)) (prim append (byteOf (prim bit_and (shiftRight word (16 : UInt32)) (255 : UInt32) : UInt32)) (byteOf (shiftRight word (24 : UInt32))) : Bytes) : Bytes) : Bytes),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: blockBytes,
+  parameters: [w : Words16],
+  result: Bytes,
+  body: (prim append (wordBytes (project w v0)) (prim append (wordBytes (project w v1)) (prim append (wordBytes (project w v2)) (prim append (wordBytes (project w v3)) (prim append (wordBytes (project w v4)) (prim append (wordBytes (project w v5)) (prim append (wordBytes (project w v6)) (prim append (wordBytes (project w v7)) (prim append (wordBytes (project w v8)) (prim append (wordBytes (project w v9)) (prim append (wordBytes (project w v10)) (prim append (wordBytes (project w v11)) (prim append (wordBytes (project w v12)) (prim append (wordBytes (project w v13)) (prim append (wordBytes (project w v14)) (wordBytes (project w v15)) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: outputBytes,
+  parameters: [node : Output, outLen : Nat],
+  result: Bytes,
+  body: (let blocks : Nat := (prim quotient (outLen + 63) 64 0 : Nat); (let produced : (Nat * Bytes) := (prim iterate (fun [node] (stream : (Nat * Bytes)) => (((first stream) + 1), (prim append (second stream) (blockBytes (rootWords node (first stream))) : Bytes))) blocks (0, 0x) : (Nat * Bytes)); (match (prim slice (second produced) 0 outLen : (Option Bytes))
+    | Option.some trimmed => trimmed
+    | Option.none => (second produced)))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: finalize,
+  parameters: [state : Hasher, outLen : Nat],
+  result: Bytes,
+  body: (outputBytes (finalOutput state) outLen),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: contextKey,
+  parameters: [context : Bytes],
+  result: Cv,
+  body: (cvOf (rootWords (finalOutput (update (hasherWith (iv) (flagDeriveKeyContext)) context)) 0)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: start,
+  parameters: [mode : Mode],
+  result: (Result Hasher Blake3Error),
+  body: (match mode
+    | Mode.hashMode => (ctor Result.ok [Hasher, Blake3Error] (hasherWith (iv) (0 : UInt32)))
+    | Mode.keyedMode secret => (if ((prim length secret : Nat) =? 32) then (ctor Result.ok [Hasher, Blake3Error] (hasherWith (keyWordsOf secret) (flagKeyedHash))) else (ctor Result.error [Hasher, Blake3Error] (ctor Blake3Error.keyLength (prim length secret : Nat))))
+    | Mode.deriveMode context => (ctor Result.ok [Hasher, Blake3Error] (hasherWith (contextKey context) (flagDeriveKeyMaterial)))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: hexDigit,
+  parameters: [nibble : UInt32],
+  result: Bytes,
+  body: (if (prim equal (prim bit_and nibble (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and nibble (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and nibble (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and nibble (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x30 else 0x31) else (if (prim equal (prim bit_and nibble (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x32 else 0x33)) else (if (prim equal (prim bit_and nibble (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and nibble (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x34 else 0x35) else (if (prim equal (prim bit_and nibble (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x36 else 0x37))) else (if (prim equal (prim bit_and nibble (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and nibble (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and nibble (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x38 else 0x39) else (if (prim equal (prim bit_and nibble (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x61 else 0x62)) else (if (prim equal (prim bit_and nibble (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and nibble (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x63 else 0x64) else (if (prim equal (prim bit_and nibble (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x65 else 0x66)))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: hexStep,
+  parameters: [data : Bytes, walk : (Nat * Bytes)],
+  result: (Nat * Bytes),
+  body: (let pos : Nat := (first walk); (let octet : UInt32 := (byteAt data (prim length data : Nat) pos); ((pos + 1), (prim append (second walk) (prim append (hexDigit (shiftRight octet (4 : UInt32))) (hexDigit (prim bit_and octet (15 : UInt32) : UInt32)) : Bytes) : Bytes)))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: hex,
+  parameters: [data : Bytes],
+  result: Bytes,
+  body: (second (prim iterate (fun [data] (walk : (Nat * Bytes)) => (hexStep data walk)) (prim length data : Nat) (0, 0x) : (Nat * Bytes))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: hashPieces,
+  parameters: [mode : Mode, pieces : (List Bytes), outLen : Nat],
+  result: (Result Bytes Blake3Error),
+  body: (match (start mode)
+    | Result.ok initial => (ctor Result.ok [Bytes, Blake3Error] (finalize (prim list_fold (fun (state : Hasher) (piece : Bytes) => (update state piece)) initial pieces : Hasher) outLen))
+    | Result.error refused => (ctor Result.error [Bytes, Blake3Error] refused)),
+  axioms: [Quot.sound, propext],
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+
+definition{
+  name: hash,
+  parameters: [message : Bytes, outLen : Nat],
+  result: Bytes,
+  body: (finalize (update (hasherWith (iv) (0 : UInt32)) message) outLen),
+  axioms: [Quot.sound, propext],
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+
+definition{
+  name: hashHex,
+  parameters: [message : Bytes],
+  result: Bytes,
+  body: (hex (hash message 32)),
+  axioms: [Quot.sound, propext],
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+
+definition{
+  name: keyedHash,
+  parameters: [secret : Bytes, message : Bytes, outLen : Nat],
+  result: (Result Bytes Blake3Error),
+  body: (match (start (ctor Mode.keyedMode secret))
+    | Result.ok initial => (ctor Result.ok [Bytes, Blake3Error] (finalize (update initial message) outLen))
+    | Result.error refused => (ctor Result.error [Bytes, Blake3Error] refused)),
+  axioms: [Quot.sound, propext],
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+
+definition{
+  name: deriveKey,
+  parameters: [context : Bytes, material : Bytes, outLen : Nat],
+  result: Bytes,
+  body: (finalize (update (hasherWith (contextKey context) (flagDeriveKeyMaterial)) material) outLen),
+  axioms: [Quot.sound, propext],
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+
+structure{
+  name: Vector,
+  type_parameters: [],
+  parameters: [],
+  fields: [{name: given, type: Bytes}, {name: expected, type: Bytes}]
+}
+
+structure{
+  name: Acceptance,
+  type_parameters: [],
+  parameters: [],
+  fields: [{name: acceptanceVectors, type: (List Vector)}]
+}
+
+definition{
+  name: officialInput,
+  parameters: [len : Nat],
+  result: Bytes,
+  body: (match (prim slice (prim iterate (fun (doubled : Bytes) => (prim append doubled doubled : Bytes)) 10 0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fa : Bytes) 0 len : (Option Bytes))
+    | Option.some cut => cut
+    | Option.none => 0x),
+  executable: true
+}
+
+definition{
+  name: acceptance,
+  parameters: [],
+  result: Acceptance,
+  body: (record Acceptance {acceptanceVectors := (cons (record Vector {given := (officialInput 0), expected := 0x61663133343962396635663961316136613034303464656133366463633934393962636232356339616463313132623763633961393363616534316633323632}) (cons (record Vector {given := (officialInput 1), expected := 0x32643361646564666631316236316631346338383665333561666130333637333664636438376137346432376235633135313032323564306635393265323133}) (cons (record Vector {given := (officialInput 2), expected := 0x37623730313562623932636630623331383033373730326136636464383164656534313232346637333436383463326331323263643633353963623165653633}) (cons (record Vector {given := (officialInput 3), expected := 0x65316265346437613861623535363061613431393965656133333938343962613865323933643535636130613831303036373236643138343531396536343766}) (cons (record Vector {given := (officialInput 4), expected := 0x66333066356162323866653034373930343033376637376236646134666561316532373234316335643133323633386438626564636539643430343934663332}) (cons (record Vector {given := (officialInput 5), expected := 0x62343062343464666439376537613834613939366139316166386238353138386336366331323639343062613761616432653761653662333835343032616132}) (cons (record Vector {given := (officialInput 6), expected := 0x30366334653866666236383732666164393666396161636135656565313535336562363261656430616437313938636566343265383766366136313663383434}) (cons (record Vector {given := (officialInput 7), expected := 0x33663837373066333837666161643038666161396438343134653966343439616336386536666630343137663637336636303261363436613839313431396665}) (cons (record Vector {given := (officialInput 8), expected := 0x32333531323037643034666331366164653433636361623038363030393339633763316661373061356330616163613736303633643034633332323865616562}) (cons (record Vector {given := (officialInput 63), expected := 0x65396263333761353934646161643833626539343730646637663762333739383239376333643833346365383062613835643665323037363237623764623762}) (cons (record Vector {given := (officialInput 64), expected := 0x34656564373134316561346135636434623738383630366264323366343665323132616639636163656261636463376431663463366463376632353131623938}) (cons (record Vector {given := (officialInput 65), expected := 0x64653165356661306265373064663664326265386666666430653939636561613865623665386339336136336632643864316333306563623662323633646565}) (cons (record Vector {given := (officialInput 127), expected := 0x64383132393366646138363366303038633039653932666333383261383166356130623461313235316362613136333430313661306638366136626436343064}) (cons (record Vector {given := (officialInput 128), expected := 0x66313765353730353634623236353738633333626237663434363433663533393632346230356466316137366338316633306163643534386334346234356566}) (cons (record Vector {given := (officialInput 129), expected := 0x36383361616165396633633562613337656161663037326165643066396533306261633038363531333762616536386231666465346361326165626463623132}) (cons (record Vector {given := (officialInput 1023), expected := 0x31303130383937306565646133656239333262616163313432386337613231363362306539323463396139653235623335626261373262323866373062643131}) (cons (record Vector {given := (officialInput 1024), expected := 0x34323231343733396630393561343036663366633833646562383839373434616330306466383331633130646161353531383962356431323163383535616637}) (cons (record Vector {given := (officialInput 1025), expected := 0x64303032373861653437656232376233346661656366363762346665323633663832643534313239313663316666643937633863623766623831346238343434}) (cons (record Vector {given := (officialInput 2048), expected := 0x65373736623630323863376364323261346430626131383261386266363232303564326566353736343637653833386564366632353239623835666261323461}) (cons (record Vector {given := (officialInput 2049), expected := 0x35663464373266343064376135663832623135636132623265343462316465336332656638366334323663393563316166306236383739353232353633303330}) (cons (record Vector {given := (officialInput 3072), expected := 0x62393863623066663336323362653033333236623337336465366239303935323138353133653634663165653265646432353235633761643165356366666432}) (cons (record Vector {given := (officialInput 3073), expected := 0x37313234623439353031303132663831636337663131636130363965633932323663656362386132633835306366653634346533323764323264336531636433}) (cons (record Vector {given := (officialInput 4096), expected := 0x30313530393430313366353761353237376235396438343735633035303130343263306236343265353331623061316338663538643231363332323965393639}) (cons (record Vector {given := (officialInput 4097), expected := 0x39623430353262333866316335666338623166396666376163376232376364323432343837623364383930643135633936613163323562386161306662393935}) (cons (record Vector {given := (officialInput 5120), expected := 0x39636164633135666564386235643835343536326232366139353336643937303763616465646139623134333937386633313961623334323330353335383333}) (cons (record Vector {given := (officialInput 5121), expected := 0x36323862643263623230303436393461646161623762626437373861323564663235633437623964343135356135356638666264373966326665313534636666}) (cons (record Vector {given := (officialInput 6144), expected := 0x33653265356237346530343866336164643664323166616162336638336161343464336232323738616662383362383062336333353136346562656361323035}) (cons (record Vector {given := (officialInput 6145), expected := 0x66313332336138363331343436636335303533366139663730356565356362363139343234643436383837663363333736633639356237306530663035303766}) (cons (record Vector {given := (officialInput 7168), expected := 0x36316461393537656332343939613935643662383032336532623065363034656337663662353065383061393637386238396432363238653939616461373761}) (cons (record Vector {given := (officialInput 7169), expected := 0x61303033666337613531373534613962336337666165303336376162336437383264636366323838353561303364343335663863666537343630356537383137}) (cons (record Vector {given := (officialInput 8192), expected := 0x61616537393234383463386566653466313965326361376433373164386334363766666231303734386438613561316165353739393438663731386132613633}) (cons (record Vector {given := (officialInput 8193), expected := 0x62616236633039636238636538636634353932363133393864326537616566333537303062663438383131366365623934613336643066356631623762633362}) (cons (record Vector {given := (officialInput 16384), expected := 0x66383735643636343664653238393835363436663334656531336265396135373666643531356637366235623061323662623332343733353034316464646534}) (cons (record Vector {given := (officialInput 31744), expected := 0x36326236393630653161343462636331656231613631316138643632333562366234623738663332653761626334666234633663646363653934383935633437}) (cons (record Vector {given := (officialInput 102400), expected := 0x62633365336434316131313436623036396162666661643363306434343836306366363634333930616663653464393636316637393032653739343365303835}) (nil Vector))))))))))))))))))))))))))))))))))))}),
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+\end{semanticmodule}
+\end{lexlean}

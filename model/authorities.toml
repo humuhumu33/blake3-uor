@@ -9,9 +9,13 @@
 # realizes the cited fact. Evidence is not proof, and the meta-gate fails the
 # build if any document blurs the two registers.
 #
-# Empty. The first authority this repository cites goes here, before any claim
-# is allowed to say `some-true`.
-
 spec = "template/1"
 
-authority = []
+[[authority]]
+id = "AUTH-BLAKE3"
+name = "BLAKE3 specification and official test vectors"
+citation = "J.-P. Aumasson, S. Neves, J. O'Connor, Z. Wilcox-O'Hearn, The BLAKE3 cryptographic hash function, https://github.com/BLAKE3-team/BLAKE3-specs; test_vectors/test_vectors.json at BLAKE3 release 1.8.7, commit f3149ec5bb5449af877ba20377a11008ff499fa2, committed as oracles/blake3-1.8.7/test_vectors.json"
+checksum = "sha256:dcb91ea8accc77e6d6e632af7cdc1a99a9f3ae78cf648da595c7d064db32f624"
+checksum_reason = ""
+statement = "BLAKE3's compression function, chunk and tree structure, modes and extended output are as the specification defines them, and the official vectors are its outputs."
+realized_by = ["B3-01", "B3-02"]

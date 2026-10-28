@@ -1,0 +1,14 @@
+\begin{lexlean}{Blake3KernelSplitUpdateEqualsOneShot}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3}
+\title{Natural number addition}
+\begin{semanticmodule}
+theorem{
+  name: split_update_equals_one_shot,
+  parameters: [],
+  statement: ((Blake3::rootWords (Blake3::finalOutput (Blake3::update (Blake3::update (Blake3::hasherWith (Blake3::iv) (0 : UInt32)) 0x0001) 0x02)) 0) = (Blake3::rootWords (Blake3::finalOutput (Blake3::update (Blake3::hasherWith (Blake3::iv) (0 : UInt32)) 0x000102)) 0)),
+  proof: reflexivity{},
+  axioms: [Quot.sound, propext]
+}
+\end{semanticmodule}
+\end{lexlean}

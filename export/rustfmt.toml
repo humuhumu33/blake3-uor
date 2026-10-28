@@ -1,0 +1,4 @@
+# The packages below are LexLean's bytes, bound by sha256 in their
+# provenance.json; `cargo fmt --all` follows path dependencies here, and
+# reformatting them would break that binding.
+disable_all_formatting = true

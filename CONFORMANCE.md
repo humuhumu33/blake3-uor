@@ -18,14 +18,28 @@ The three honesty levels (R2):
 `cargo xtask audit-limits` fails if any code path returns an error the
 model does not sanction.
 
+## blake3
+
+| ID | Level | Statement |
+| --- | --- | --- |
+| `B3-01` | `build` | The exported packages reproduce all 35 cases of the official BLAKE3 1.8.7 test vectors in hash, keyed_hash and derive_key modes, 131 bytes of extended output each, and the 32-byte digest as lowercase hex. |
+| `B3-02` | `build` | The exported packages equal the blake3 crate 1.8.7 in all three modes on a seeded corpus whose lengths cover every block, chunk and tree boundary from 0 to 102400 bytes, at output lengths from 0 to 1031 bytes. |
+| `B3-03` | `build` | Incremental hashing (start, one update per piece, finalize) equals one-shot hashing for every tested split of every corpus input, in all three modes. |
+| `B3-04` | `build` | A keyed-hash key that is not 32 bytes is refused as Blake3Error.keyLength carrying its length, by keyedHash and by hashPieces. |
+| `B3-05` | `build` | The committed packages are the ones a verified LexLean build exported: each package file hashes to its provenance record, each package names the attested semantic identity, and the attestation records all eleven kernel theorems with exactly the axioms Quot.sound and propext. |
+
 ## Cited authorities
 
 Never re-derived, vendored, or gated on.
 
 | Authority | Citation | Evidence here |
 | --- | --- | --- |
+| `AUTH-BLAKE3` | J.-P. Aumasson, S. Neves, J. O'Connor, Z. Wilcox-O'Hearn, The BLAKE3 cryptographic hash function, https://github.com/BLAKE3-team/BLAKE3-specs; test_vectors/test_vectors.json at BLAKE3 release 1.8.7, commit f3149ec5bb5449af877ba20377a11008ff499fa2, committed as oracles/blake3-1.8.7/test_vectors.json | `B3-01`, `B3-02` |
 
 ## Claims that are not conformance IDs
 
 | ID | Level | Claim |
 | --- | --- | --- |
+| `AUTH-BLAKE3-VECTORS` | `some-true` | The official BLAKE3 test vectors are the outputs of BLAKE3 as specified. |
+| `OPEN-B3-THROUGHPUT` | `open` | Single-thread throughput of the exported blake3_hash package against the blake3 crate's portable and SIMD builds, as reported by `cargo run --release -p blake3-check --bin throughput` in docs/blake3-verification.md. |
+| `OPEN-B3-PRISM-IMAGE` | `open` | A local Prism image of lexlean/src/Blake3.lex.tex, built and checked with the prism-browser-runtime tooling outside this repository, as reported in docs/blake3-verification.md. |

@@ -1,0 +1,14 @@
+\begin{lexlean}{Blake3KernelOfficialDeriveKey1}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3}
+\title{Natural number addition}
+\begin{semanticmodule}
+theorem{
+  name: official_derive_key_1,
+  parameters: [],
+  statement: ((Blake3::rootWords (Blake3::finalOutput (Blake3::update (Blake3::hasherWith (Blake3::contextKey 0x424c414b453320323031392d31322d32372031363a32393a3532207465737420766563746f727320636f6e74657874) (Blake3::flagDeriveKeyMaterial)) 0x00)) 0) = (record Blake3::Words16 {v0 := (1088676531 : UInt32), v1 := (2577668001 : UInt32), v2 := (2552483782 : UInt32), v3 := (3537936033 : UInt32), v4 := (3073100444 : UInt32), v5 := (108219456 : UInt32), v6 := (996770355 : UInt32), v7 := (1823501558 : UInt32), v8 := (465119064 : UInt32), v9 := (3115747832 : UInt32), v10 := (4118238332 : UInt32), v11 := (2921084469 : UInt32), v12 := (3635781884 : UInt32), v13 := (1097102532 : UInt32), v14 := (286750405 : UInt32), v15 := (2299867929 : UInt32)})),
+  proof: reflexivity{},
+  axioms: [Quot.sound, propext]
+}
+\end{semanticmodule}
+\end{lexlean}
