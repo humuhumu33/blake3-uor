@@ -1,0 +1,15 @@
+\begin{lexlean}{Blake3SliceKernelWrongChunkIsRefused}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3Uor.Blake3}
+\importmodule{Blake3Slice}
+\title{Natural number addition}
+\begin{semanticmodule}
+theorem{
+  name: wrong_chunk_is_refused,
+  parameters: [],
+  statement: ((Blake3Slice::sliceCheck (ctor Blake3Uor.Blake3::Mode.hashMode) 0x01040000000000005c9e654411e393d1f4bec710ccd5bc5669ab177d610a0eb691fcfee92fb4e8b12f008e8a6979718c0c2f2fd7deb6e7fe4c1a3d8e90139c60cc163eb610ad841115 1 1025 0xd00278ae47eb27b34faecf67b4fe263f82d5412916c1ffd97c8cb7fb814b8444) = (ctor Result.error [Bytes, Blake3Slice::SliceError] (ctor Blake3Slice::SliceError.chunk))),
+  proof: reflexivity{},
+  axioms: [Quot.sound, propext]
+}
+\end{semanticmodule}
+\end{lexlean}

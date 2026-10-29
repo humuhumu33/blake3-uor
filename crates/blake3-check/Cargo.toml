@@ -28,10 +28,15 @@ blake3_derive_key = { workspace = true }
 blake3_hash_pieces = { workspace = true }
 blake3_trace_file = { workspace = true }
 blake3_trace_address = { workspace = true }
+blake3_slice_of = { workspace = true }
+blake3_slice_check = { workspace = true }
 # The oracle. Its version is the release whose test vectors are committed in
 # `oracles/blake3-1.8.7/`.
 blake3 = "=1.8.7"
 serde_json = "1"
+# A second oracle for the slices: the Bao reference implementation, by the
+# BLAKE3 authors, whose slice layout and root hash the LexLean slices follow.
+bao = "=0.13.1"
 # The provenance records name package files by sha256.
 sha2 = "0.10"
 # The register, to read the vendored stdlib's cited checksum.

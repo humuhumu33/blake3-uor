@@ -26,11 +26,11 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-# Two LexLean projects in one workspace, each exporting only its own roots:
+# Five LexLean projects in one workspace, each with only its own roots:
 # a production certificate imports a shared lemma library built from every
 # root of its project, and the hash and trace roots together exceed the 8 GB
 # a verify may use, while each project alone fits.
-PROJECTS = ("lexlean", "lexlean-trace", "lexlean-reverse")
+PROJECTS = ("lexlean", "lexlean-trace", "lexlean-reverse", "lexlean-slice", "lexlean-analysis")
 SOURCES = ROOT / "lexlean" / "src"
 MODULE = SOURCES / "Blake3.lex.tex"
 VECTORS = ROOT / "oracles" / "blake3-1.8.7" / "test_vectors.json"
@@ -840,6 +840,415 @@ def render_reverse(core="Blake3Uor.Blake3::"):
     return decls
 
 
+def lookup(var, lo, hi, leaf):
+    """A balanced lookup of the Nat `var` over lo..hi, as render's schedule tables."""
+    if lo == hi:
+        return leaf(lo)
+    mid = (lo + hi + 1) // 2
+    return f"(if ({var} <? {mid}) then {lookup(var, lo, mid - 1, leaf)} else {lookup(var, mid, hi, leaf)})"
+
+
+def schedule_rows():
+    """The 128 rows of the step machine: (G, op index, kind, dest, source)."""
+    (r1, _), (r2, _), (r3, _), (r4, _) = ROTATIONS
+    rows = []
+    for g, (a, b, c, d) in enumerate(G_LANES):
+        x, y = 2 * g, 2 * g + 1
+        # G: a += b; a += mx; d ^= a; d >>>= 16; c += d; b ^= c; b >>>= 12;
+        # then the same with my, 8 and 7.
+        for i, (kind, dest, source) in enumerate(
+                [("opAdd", a, b), ("opAddMsg", a, x), ("opXor", d, a), ("opRor", d, r1), ("opAdd", c, d),
+                 ("opXor", b, c), ("opRor", b, r2), ("opAdd", a, b), ("opAddMsg", a, y), ("opXor", d, a),
+                 ("opRor", d, r3), ("opAdd", c, d), ("opXor", b, c), ("opRor", b, r4)]):
+            rows.append((g, i, kind, dest, source))
+    # The feed-forward: output word i is v[i] ^ v[i+8], or v[i] ^ cv[i-8].
+    return rows + [(0, i, "opXor", i, i + 8) for i in range(8)] + [(0, 8 + i, "opXorCv", 8 + i, i) for i in range(8)]
+
+
+# The inputs of one compression, as the taint map numbers them: message bits
+# 0-511 (word w bit i is 32w + i), then the initial state's bits 512-1023.
+# State words 8-11 are the IV, constants, so no input bit is theirs.
+FULL_INIT = [0 if 8 <= i <= 11 else 0xFFFFFFFF for i in range(16)]
+# Word level: input words 0-15 the message, 16-31 the initial state.
+FULL_MASK = 0xFFFFFFFF & ~(0xF << 24)
+
+
+def word_diffusion():
+    """The first step after which every state word depends on every input
+    word, by the word-level taint rule; the kernel theorem checks the
+    LexLean definition against this number."""
+    masks = [0 if 8 <= i <= 11 else 1 << (16 + i) for i in range(16)]
+    rows = schedule_rows()
+    for k in range(7 * 112):
+        r, (_, _, kind, dest, source) = k // 112, rows[k % 112]
+        if kind in ("opAdd", "opXor"):
+            masks[dest] |= masks[source]
+        elif kind == "opAddMsg":
+            masks[dest] |= 1 << sigma(r)[source]
+        if all(m == FULL_MASK for m in masks):
+            return k
+    return 800
+
+
+# Chunk 0's and chunk 1's chaining values of the official 1025-byte input,
+# from blake3 1.8.7's hazmat API: data for the slice theorems, which check
+# them against the official hash, so this table is not trusted.
+SLICE_CVS = ("5c9e654411e393d1f4bec710ccd5bc5669ab177d610a0eb691fcfee92fb4e8b1",
+             "2f008e8a6979718c0c2f2fd7deb6e7fe4c1a3d8e90139c60cc163eb610ad8411")
+
+
+def render_slice(core="Blake3Uor.Blake3::"):
+    """Phase 2, verified slices. A slice of chunk N is the Bao layout for one
+    chunk: the input length (8 bytes, little-endian), the parent nodes on
+    the chunk's path from the root (64 bytes each, left CV then right CV),
+    then the chunk. sliceOf reads the CVs from the trace; sliceCheck hashes
+    only the chunk and the path, from the root down."""
+    q = lambda n: f"{core}{n}"
+    W16, CV, NODE, ERR = q("Words16"), q("Cv"), q("Node"), q("Blake3Error")
+    decls = []
+    add = decls.append
+    zeros = record(W16, [(f"v{i}", u32(0)) for i in range(16)])
+    add(inductive("SliceError", [("keyLength", ["Nat"]), ("outOfRange", []), ("header", []), ("rootLength", []),
+                                 ("parent", ["Nat"]), ("size", []), ("chunk", [])]))
+    add(definition("chunkCount", ["len : Nat"], "Nat",
+                   "(if (len =? 0) then 1 else ((prim quotient (prim subtract len 1 : Nat) 1024 0 : Nat) + 1))", axioms=False))
+    add(definition("chunkSize", ["len : Nat", "chunk : Nat"], "Nat",
+                   lets([("begin", "Nat", "(prim multiply chunk 1024 : Nat)")],
+                        iff("((begin + 1024) <=? len)", "1024", "(prim subtract len begin : Nat)")), axioms=False))
+    # The left subtree of `size` > 1 chunks: the largest power of two below it.
+    add(definition("leftSpan", ["size : Nat"], "Nat",
+                   "(first (prim iterate_until (fun [size] (p : Nat) => (if ((prim multiply p 2 : Nat) <? size) then "
+                   "(ctor Option.some [Nat] (prim multiply p 2 : Nat)) else (ctor Option.none [Nat]))) 64 1 : (Nat * Bool)))",
+                   axioms=False))
+    add(definition("chainBytes", ["c : " + CV], "Bytes", cat(*[f"({q('wordBytes')} (project c h{i}))" for i in range(8)])))
+    add(definition("lengthBytes", ["len : Nat"], "Bytes",
+                   cat(f"({q('wordBytes')} ({q('counterLow')} len))", f"({q('wordBytes')} ({q('counterHigh')} len))")))
+    add(definition("chainsSame", ["a : " + CV, "b : " + CV], "Bool",
+                   conj(*[eq(f"(project a h{i})", f"(project b h{i})") for i in range(8)]), axioms=False))
+    add(definition("upperChain", ["w : " + W16], CV, record(CV, [(f"h{i}", f"(project w v{8 + i})") for i in range(8)]),
+                   axioms=False))
+    add(definition("treeNodes", ["trace : " + q("Trace")], f"(List {NODE})",
+                   f"(prim list_fold (fun (acc : (List {NODE})) (event : {q('Event')}) => (match event\n"
+                   f"    | {q('Event')}.compressed n => (cons n acc)\n    | {q('Event')}.pushed e depth => acc\n"
+                   f"    | {q('Event')}.popped e depth => acc)) (nil {NODE}) (project trace events) : (List {NODE}))",
+                   axioms=False))
+    # Whether a node's output is the CV of the subtree of `span` chunks from
+    # chunk `origin`: a chunk's last block, or a non-root parent.
+    add(definition("covers", ["n : " + NODE, "origin : Nat", "span : Nat"], "Bool",
+                   iff("(span =? 1)",
+                       "(((project n role) =? 0) && (((project n origin) =? origin) && "
+                       f"(if (prim equal (prim bit_and (project n flags) ({q('flagChunkEnd')}) : UInt32) (0 : UInt32) : Bool) "
+                       "then false else true)))",
+                       "(((project n role) =? 1) && (((project n origin) =? origin) && ((project n span) =? span)))")))
+    add(definition("subtreeChain", [f"nodes : (List {NODE})", "origin : Nat", "span : Nat"], CV,
+                   f"({q('cvOf')} (prim list_fold (fun [origin, span] (acc : {W16}) (n : {NODE}) => "
+                   f"(if (covers n origin span) then (project n output) else acc)) {zeros} nodes : {W16}))"))
+    # One level down the path: the parent node of the subtree (lo, size),
+    # then the child holding the chunk.
+    path = "(Nat * (Nat * (List Bytes)))"
+    add(definition("descend", [f"nodes : (List {NODE})", "chunk : Nat", "st : " + path], f"(Option {path})",
+                   lets([("lo", "Nat", "(first st)"), ("size", "Nat", "(first (second st))"),
+                         ("acc", "(List Bytes)", "(second (second st))")],
+                        iff("(size <=? 1)", f"(ctor Option.none [{path}])",
+                            lets([("left", "Nat", "(leftSpan size)"),
+                                  ("node", "Bytes", "(prim append (chainBytes (subtreeChain nodes lo left)) (chainBytes "
+                                                    "(subtreeChain nodes (lo + left) (prim subtract size left : Nat))) : Bytes)")],
+                                 iff("(chunk <? (lo + left))",
+                                     f"(ctor Option.some [{path}] (lo, (left, (cons node acc))))",
+                                     f"(ctor Option.some [{path}] ((lo + left), ((prim subtract size left : Nat), (cons node acc))))"))))))
+    # The slice of chunk `chunk` of `input`; empty when there is no such chunk.
+    add(definition("sliceOf", ["mode : " + q("Mode"), "input : Bytes", "chunk : Nat"], f"(Result Bytes {ERR})",
+                   f"(match ({q('traceOf')} mode (cons input (nil Bytes)) 32)\n"
+                   f"    | Result.ok trace => (ctor Result.ok [Bytes, {ERR}] "
+                   + lets([("len", "Nat", "(prim length input : Nat)"), ("n", "Nat", "(chunkCount len)"),
+                           ("nodes", f"(List {NODE})", "(treeNodes trace)")],
+                          iff("(chunk <? n)",
+                              lets([("parents", "(List Bytes)",
+                                     f"(second (second (first (prim iterate_until (fun [chunk, nodes] (st : {path}) => "
+                                     f"(descend nodes chunk st)) 64 (0, (n, (nil Bytes))) : ({path} * Bool)))))"),
+                                    ("data", "Bytes", "(match (prim slice input (prim multiply chunk 1024 : Nat) (chunkSize len chunk) : "
+                                                      "(Option Bytes))\n      | Option.some d => d\n      | Option.none => 0x)")],
+                                   f"({q('concatAll')} (cons (lengthBytes len) (prim list_fold (fun (acc : (List Bytes)) "
+                                   "(node : Bytes) => (cons node acc)) (cons data (nil Bytes)) parents : (List Bytes))))"),
+                              "0x"))
+                   + f")\n    | Result.error refused => (ctor Result.error [Bytes, {ERR}] refused))", production=core != ""))
+
+    fields = ("lo", "size", "pos", "expected", "top", "level", "failed")
+    add(structure("Walk", [("lo", "Nat"), ("size", "Nat"), ("pos", "Nat"), ("expected", CV), ("top", "Bool"),
+                           ("level", "Nat"), ("failed", "Bool")]))
+    walk = lambda **given: "(ctor Option.some [Walk] " + record("Walk", [(f, given.get(f, f"(project w {f})")) for f in fields]) + ")"
+    down = dict(pos="((project w pos) + 64)", top="false", level="((project w level) + 1)")
+    # One parent node, checked against the CV expected for its subtree (the
+    # root hash at the top), then the child on the chunk's side.
+    add(definition("checkLevel", ["key : " + CV, "base : UInt32", "slice : Bytes", "chunk : Nat", "w : Walk"], "(Option Walk)",
+                   iff("(project w failed)", "(ctor Option.none [Walk])", iff("((project w size) <=? 1)", "(ctor Option.none [Walk])",
+                       iff("(((project w pos) + 64) <=? (prim length slice : Nat))",
+                           lets([("block", W16, f"({q('loadBlock')} slice (prim length slice : Nat) (project w pos))"),
+                                 ("flags", "UInt32", f"(prim bit_or base (if (project w top) then (prim bit_or ({q('flagParent')}) "
+                                                     f"({q('flagRoot')}) : UInt32) else ({q('flagParent')})) : UInt32)"),
+                                 ("out", W16, f"({q('compress')} key block (0 : UInt32) (0 : UInt32) (64 : UInt32) flags)")],
+                                iff(f"(chainsSame ({q('cvOf')} out) (project w expected))",
+                                    lets([("left", "Nat", "(leftSpan (project w size))")],
+                                         iff("(chunk <? ((project w lo) + left))",
+                                             walk(size="left", expected=f"({q('cvOf')} block)", **down),
+                                             walk(lo="((project w lo) + left)", size="(prim subtract (project w size) left : Nat)",
+                                                  expected="(upperChain block)", **down))),
+                                    walk(failed="true"))),
+                           walk(failed="true"))))))
+    start_walk = record("Walk", [("lo", "0"), ("size", "(chunkCount len)"), ("pos", "8"), ("expected", f"({q('keyWordsOf')} root)"),
+                                 ("top", "true"), ("level", "0"), ("failed", "false")])
+    fail = lambda e: f"(ctor Result.error [Bytes, SliceError] (ctor SliceError.{e}))"
+    leaf = lets([("size", "Nat", "(chunkSize len chunk)"),
+                 ("data", "Bytes", "(match (prim slice slice (project walked pos) (prim subtract (prim length slice : Nat) "
+                                   "(project walked pos) : Nat) : (Option Bytes))\n      | Option.some d => d\n      | Option.none => 0x)")],
+                iff("((prim length data : Nat) =? size)",
+                    lets([("pending", q("Pending"), f"(first ({q('chunkPending')} key base data 0 size chunk (nil {q('Event')})))"),
+                          ("node", NODE, f"({q('run')} (if (project walked top) then ({q('rootPending')} pending 0) else pending))")],
+                         iff(f"(chainsSame ({q('cvOf')} (project node output)) (project walked expected))",
+                             "(ctor Result.ok [Bytes, SliceError] data)", fail("chunk"))),
+                    fail("size")))
+    add(definition("checkWith", ["key : " + CV, "base : UInt32", "slice : Bytes", "chunk : Nat", "len : Nat", "root : Bytes"],
+                   "(Result Bytes SliceError)",
+                   iff("(chunk <? (chunkCount len))",
+                       iff("((prim length root : Nat) =? 32)",
+                           # The header word by word: the kernel reduces
+                           # UInt32 equality, not ByteArray equality.
+                           iff(conj("(8 <=? (prim length slice : Nat))",
+                                    eq(f"({q('blockWord')} slice 8 0)", f"({q('counterLow')} len)"),
+                                    eq(f"({q('blockWord')} slice 8 4)", f"({q('counterHigh')} len)")),
+                               lets([("walked", "Walk", "(first (prim iterate_until (fun [base, chunk, key, slice] (w : Walk) => "
+                                                        f"(checkLevel key base slice chunk w)) 64 {start_walk} : (Walk * Bool)))")],
+                                    iff("(project walked failed)",
+                                        "(ctor Result.error [Bytes, SliceError] (ctor SliceError.parent (project walked level)))", leaf)),
+                               fail("header")), fail("rootLength")),
+                       fail("outOfRange"))))
+    # The chunk, if `slice` proves it is chunk `chunk` of an input of `len`
+    # bytes whose 32-byte hash in `mode` is `root`.
+    add(definition("sliceCheck", ["mode : " + q("Mode"), "slice : Bytes", "chunk : Nat", "len : Nat", "root : Bytes"],
+                   "(Result Bytes SliceError)",
+                   f"(match ({q('start')} mode)\n"
+                   "    | Result.ok h => (checkWith (project h keyWords) (project h modeFlags) slice chunk len root)\n"
+                   f"    | Result.error refused => (match refused\n"
+                   f"      | {ERR}.keyLength n => (ctor Result.error [Bytes, SliceError] (ctor SliceError.keyLength n))))",
+                   production=core != ""))
+    return decls
+
+
+def render_analysis(core="Blake3Uor.Blake3::", rev="Blake3UorReverse.Blake3Reverse::"):
+    """Phase 2, difference traces and the dependency map of one compression."""
+    q = lambda n: f"{core}{n}"
+    b = lambda n: f"{rev}{n}"
+    W16, CV, OP, ROW, STEP = q("Words16"), q("Cv"), q("Op"), q("Row"), q("Step")
+    decls = []
+    add = decls.append
+    zeros = record(W16, [(f"v{i}", u32(0)) for i in range(16)])
+    reverse = lambda t, items: (f"(prim list_fold (fun (acc : (List {t})) (x : {t}) => (cons x acc)) (nil {t}) {items} : (List {t}))")
+
+    # Difference traces. An input is a compression's (CV, block, counter,
+    # length, flags); a difference trace of two inputs is, for each of the
+    # 800 steps, the xor of their left operands, right operands and results
+    # (12 bytes a step, 9,600 in all).
+    add(structure("Input", [("chain", "Bytes"), ("block", "Bytes"), ("lo", "UInt32"), ("hi", "UInt32"), ("len", "UInt32"),
+                            ("fl", "UInt32")]))
+    add(structure("Triple", [("left", "UInt32"), ("right", "UInt32"), ("result", "UInt32")]))
+    chain = f"({q('keyWordsOf')} (project x chain))"
+    block = f"({q('loadBlock')} (project x block) 64 0)"
+    add(definition("tripleDiff", ["a : Triple", "p : Triple"], "Bytes",
+                   cat(*[f"({q('wordBytes')} ({q('xor')} (project a {f}) (project p {f})))" for f in ("left", "right", "result")])))
+    # Forwards: the records of the compression run forwards, oldest first.
+    add(definition("forwardTriples", ["x : Input"], "(List Triple)",
+                   f"(prim list_fold (fun (acc : (List Triple)) (s : {STEP}) => (cons (record Triple {{left := (project s left), "
+                   "right := (project s right), result := (project s result)}) acc)) (nil Triple) "
+                   f"(project ({q('compressTrace')} {chain} {block} (project x lo) (project x hi) (project x len) (project x fl)) log) "
+                   ": (List Triple))"))
+    # Backwards: the same records rebuilt from the 16 output words, the
+    # message and the CV alone. The feed-forward reads the state after round
+    # 6, which unfeed recovers; each round step is then undone from the end.
+    add(definition("feedTriple", ["cv : " + CV, "m : " + W16, "s : " + W16, "k : Nat"], "Triple",
+                   lets([("row", ROW, f"({b('rowFor')} k)"), ("left", "UInt32", f"({q('getWord')} s (project row dest))"),
+                         ("right", "UInt32", f"({b('operand')} cv m s k)")],
+                        f"(record Triple {{left := left, right := right, result := ({q('perform')} (project row kind) left right)}})")))
+    walk = f"(Nat * ({W16} * (List Triple)))"
+    add(definition("backStep", ["cv : " + CV, "m : " + W16, "walk : " + walk], walk,
+                   lets([("k", "Nat", "(prim subtract 783 (first walk) : Nat)"), ("s", W16, "(first (second walk))"),
+                         ("row", ROW, f"({b('rowFor')} k)"), ("result", "UInt32", f"({q('getWord')} s (project row dest))"),
+                         ("right", "UInt32", f"({b('operand')} cv m s k)"),
+                         ("left", "UInt32", f"({b('undo')} (project row kind) result right)")],
+                        f"(((first walk) + 1), (({q('setWord')} s (project row dest) left), "
+                        "(cons (record Triple {left := left, right := right, result := result}) (second (second walk)))))")))
+    add(definition("backwardTriples", ["x : Input"], "(List Triple)",
+                   lets([("cv", CV, chain), ("m", W16, block),
+                         ("s", W16, f"({b('unfeed')} ({q('compress')} cv m (project x lo) (project x hi) (project x len) (project x fl)) cv)"),
+                         ("feed", "(List Triple)", "(second (prim iterate (fun [cv, m, s] (walk : (Nat * (List Triple))) => "
+                                                   "(((first walk) + 1), (cons (feedTriple cv m s (prim subtract 799 (first walk) : Nat)) "
+                                                   "(second walk)))) 16 (0, (nil Triple)) : (Nat * (List Triple))))")],
+                        f"(second (second (prim iterate (fun [cv, m] (walk : {walk}) => (backStep cv m walk)) 784 (0, (s, feed)) : {walk})))")))
+    zipped = "((List Triple) * (List Bytes))"
+    add(definition("tripleDiffs", ["a : (List Triple)", "p : (List Triple)"], "Bytes",
+                   f"({q('concatAll')} " + reverse("Bytes", f"(second (prim list_fold (fun (acc : {zipped}) (x : Triple) => (match (first acc)\n"
+                                                            "    | List.cons y rest => (rest, (cons (tripleDiff x y) (second acc)))\n"
+                                                            f"    | List.nil => ((nil Triple), (second acc)))) (p, (nil Bytes)) a : {zipped}))") + ")"))
+    add(definition("diffTrace", ["a : Input", "p : Input"], "Bytes", "(tripleDiffs (forwardTriples a) (forwardTriples p))"))
+    add(definition("diffTraceBack", ["a : Input", "p : Input"], "Bytes", "(tripleDiffs (backwardTriples a) (backwardTriples p))"))
+
+    # Reach: for each state word, the first step after which the two runs
+    # differ in it (0 when the initial states already do; 800: never).
+    add(structure("Reach", [(f"n{i}", "Nat") for i in range(16)]))
+    add(definition("reachAt", ["r : Reach", "i : Nat"], "Nat", lookup("i", 0, 15, lambda n: f"(project r n{n})"), axioms=False))
+    add(definition("reachSet", ["r : Reach", "i : Nat", "value : Nat"], "Reach",
+                   lookup("i", 0, 15, lambda n: record("Reach", [(f"n{k}", "value" if k == n else f"(project r n{k})")
+                                                                 for k in range(16)])), axioms=False))
+    add(definition("reachList", ["r : Reach"], "(List Nat)", blist([f"(project r n{i})" for i in range(16)], "Nat"), axioms=False))
+    rwalk = "(Nat * ((List Triple) * Reach))"
+    add(definition("reachStep", ["walk : " + rwalk, "x : Triple"], rwalk,
+                   lets([("k", "Nat", "(first walk)"), ("dest", "Nat", f"(project ({b('rowFor')} k) dest)"),
+                         ("reach", "Reach", "(second (second walk))")],
+                        "(match (first (second walk))\n    | List.cons y rest => (((first walk) + 1), (rest, "
+                        + iff("((k <? 784) && (((reachAt reach dest) =? 800) && (if (prim equal (project x result) (project y result) : Bool) "
+                              "then false else true)))", "(reachSet reach dest k)", "reach")
+                        + "))\n    | List.nil => (((first walk) + 1), ((nil Triple), reach)))"), axioms=False))
+    initial = lambda x: (f"({q('initialState')} ({q('keyWordsOf')} (project {x} chain)) (project {x} lo) (project {x} hi) "
+                         f"(project {x} len) (project {x} fl))")
+    add(definition("diffReach", ["a : Input", "p : Input"], "(List Nat)",
+                   lets([("sa", W16, initial("a")), ("sp", W16, initial("p")),
+                         ("begin", "Reach", record("Reach", [(f"n{i}", iff(eq(f"(project sa v{i})", f"(project sp v{i})"), "800", "0"))
+                                                             for i in range(16)]))],
+                        f"(reachList (second (second (prim list_fold (fun (walk : {rwalk}) (x : Triple) => (reachStep walk x)) "
+                        f"(0, ((forwardTriples p), begin)) (forwardTriples a) : {rwalk}))))")))
+
+    # The dependency map: for each bit of each step's result, the set of
+    # input bits with a path to it in the bit-level circuit (structural
+    # taint). The rules: bit i of a sum depends on bits 0..i of both
+    # operands (the carry chain); of an xor, on bit i of both; of a
+    # right-rotation by n, on bit i+n mod 32. A set is 1024 bits: Bits.msg
+    # holds message bit 32w+i at word w bit i, Bits.init the initial state's.
+    add(structure("Bits", [("msg", W16), ("init", W16)]))
+    T = "(List Bits)"
+    add(structure("Taint16", [(f"t{i}", T) for i in range(16)]))
+    add(structure("TaintState", [("state", "Taint16"), ("out", "Taint16")]))
+    add(definition("or16", ["a : " + W16, "p : " + W16], W16,
+                   record(W16, [(f"v{i}", f"(prim bit_or (project a v{i}) (project p v{i}) : UInt32)") for i in range(16)])))
+    add(definition("bitsUnion", ["a : Bits", "p : Bits"], "Bits",
+                   "(record Bits {msg := (or16 (project a msg) (project p msg)), init := (or16 (project a init) (project p init))})"))
+    add(definition("noBits", [], "Bits", f"(record Bits {{msg := {zeros}, init := {zeros}}})", axioms=False))
+    full = record(W16, [(f"v{i}", u32(v)) for i, v in enumerate(FULL_INIT)])
+    ones = record(W16, [(f"v{i}", u32(0xFFFFFFFF)) for i in range(16)])
+    add(definition("allBits", [], "Bits", f"(record Bits {{msg := {ones}, init := {full}}})", axioms=False))
+    add(definition("bitsSame", ["a : Bits", "p : Bits"], "Bool",
+                   conj(*[eq(f"(project (project a {h}) v{i})", f"(project (project p {h}) v{i})") for h in ("msg", "init")
+                          for i in range(16)]), axioms=False))
+    add(definition("oneBit", ["inMessage : Bool", "w : Nat", "i : Nat"], "Bits",
+                   lets([("single", W16, f"({q('setWord')} {zeros} w ({q('shiftLeft')} (1 : UInt32) ({q('wordOfNat')} i 5)))")],
+                        iff("inMessage", f"(record Bits {{msg := single, init := {zeros}}})",
+                            f"(record Bits {{msg := {zeros}, init := single}})"))))
+    # The 32 singleton sets of input word w (bit 0 first).
+    add(definition("inputWord", ["inMessage : Bool", "w : Nat"], T,
+                   f"(second (prim iterate (fun [inMessage, w] (walk : (Nat * {T})) => (((first walk) + 1), (cons (oneBit inMessage w "
+                   f"(prim subtract 31 (first walk) : Nat)) (second walk)))) 32 (0, (nil Bits)) : (Nat * {T})))"))
+    add(definition("blankWord", [], T,
+                   f"(second (prim iterate (fun (walk : (Nat * {T})) => (((first walk) + 1), (cons (noBits) (second walk)))) 32 "
+                   f"(0, (nil Bits)) : (Nat * {T})))", axioms=False))
+    pair = f"({T} * {T})"
+    add(definition("taintXor", ["a : " + T, "p : " + T], T,
+                   reverse("Bits", f"(second (prim list_fold (fun (acc : {pair}) (x : Bits) => (match (first acc)\n"
+                                   "    | List.cons y rest => (rest, (cons (bitsUnion x y) (second acc)))\n"
+                                   f"    | List.nil => ((nil Bits), (second acc)))) (p, (nil Bits)) a : {pair}))")))
+    carry = f"({T} * (Bits * {T}))"
+    add(definition("taintAdd", ["a : " + T, "p : " + T], T,
+                   reverse("Bits", f"(second (second (prim list_fold (fun (acc : {carry}) (x : Bits) => (match (first acc)\n"
+                                   "    | List.cons y rest => (let carried : Bits := (bitsUnion (first (second acc)) (bitsUnion x y)); "
+                                   "(rest, (carried, (cons carried (second (second acc))))))\n"
+                                   f"    | List.nil => ((nil Bits), (second acc)))) (p, ((noBits), (nil Bits))) a : {carry})))")))
+    add(definition("taintRor", ["a : " + T, "n : Nat"], T,
+                   f"(second (prim iterate (fun [a, n] (walk : (Nat * {T})) => (((first walk) + 1), (cons (match (prim index a "
+                   "(prim remainder ((prim subtract 31 (first walk) : Nat) + n) 32 0 : Nat) : (Option Bits))\n"
+                   f"    | Option.some x => x\n    | Option.none => (noBits)) (second walk)))) 32 (0, (nil Bits)) : (Nat * {T})))",
+                   axioms=False))
+    add(definition("amountNat", ["source : Nat"], "Nat", lookup("source", 7, 16, str), axioms=False))
+    add(definition("taintAt", ["t : Taint16", "i : Nat"], T, lookup("i", 0, 15, lambda n: f"(project t t{n})"), axioms=False))
+    add(definition("taintSet", ["t : Taint16", "i : Nat", "value : " + T], "Taint16",
+                   lookup("i", 0, 15, lambda n: record("Taint16", [(f"t{k}", "value" if k == n else f"(project t t{k})")
+                                                                   for k in range(16)])), axioms=False))
+    add(definition("taintResult", ["ts : TaintState", "k : Nat"], T,
+                   lets([("row", ROW, f"({b('rowFor')} k)"), ("st", "Taint16", "(project ts state)"),
+                         ("left", T, "(taintAt st (project row dest))")],
+                        f"(match (project row kind)\n    | {OP}.opAdd => (taintAdd left (taintAt st (project row source)))\n"
+                        f"    | {OP}.opAddMsg => (taintAdd left (inputWord true ({q('slotWord')} ({b('roundOf')} k) (project row source))))\n"
+                        f"    | {OP}.opXor => (taintXor left (taintAt st (project row source)))\n"
+                        f"    | {OP}.opRor => (taintRor left (amountNat (project row source)))\n"
+                        f"    | {OP}.opXorCv => (taintXor left (inputWord false (project row source))))")))
+    add(definition("taintApply", ["ts : TaintState", "k : Nat", "result : " + T], "TaintState",
+                   lets([("dest", "Nat", f"(project ({b('rowFor')} k) dest)")],
+                        iff(f"(({b('roundOf')} k) =? 7)",
+                            "(record TaintState {state := (project ts state), out := (taintSet (project ts out) dest result)})",
+                            "(record TaintState {state := (taintSet (project ts state) dest result), out := (project ts out)})")),
+                   axioms=False))
+    add(definition("taintStart", [], "TaintState",
+                   lets([("blank", T, "(blankWord)")],
+                        "(record TaintState {state := " + record("Taint16", [(f"t{i}", "blank" if 8 <= i <= 11 else f"(inputWord false {i})")
+                                                                             for i in range(16)])
+                        + ", out := " + record("Taint16", [(f"t{i}", "blank") for i in range(16)]) + "})")))
+    add(definition("bitsBytes", ["x : Bits"], "Bytes",
+                   f"(prim append ({q('blockBytes')} (project x msg)) ({q('blockBytes')} (project x init)) : Bytes)"))
+    add(definition("taintBytes", ["t : " + T], "Bytes",
+                   f"({q('concatAll')} " + reverse("Bytes", "(prim list_fold (fun (acc : (List Bytes)) (x : Bits) => "
+                                                            "(cons (bitsBytes x) acc)) (nil Bytes) t : (List Bytes))") + ")"))
+    twalk = "(Nat * (TaintState * (List Bytes)))"
+    add(definition("taintWalk", ["begin : Nat", "walk : " + twalk], twalk,
+                   lets([("k", "Nat", "(first walk)"), ("ts", "TaintState", "(first (second walk))"),
+                         ("result", T, "(taintResult ts k)")],
+                        "(((first walk) + 1), ((taintApply ts k result), (if (begin <=? k) then (cons (taintBytes result) "
+                        "(second (second walk))) else (second (second walk)))))")))
+    # The map of round r (0-6; 7 is the feed-forward): for each of its steps
+    # in order, the 32 sets of the step's result, bit 0 first, 128 bytes a
+    # set (the message words, then the initial state's, little-endian).
+    add(definition("taintRound", ["r : Nat"], "Bytes",
+                   lets([("begin", "Nat", "(if (r <? 7) then (prim multiply r 112 : Nat) else 784)"),
+                         ("finish", "Nat", "(if (r <? 7) then (prim multiply (r + 1) 112 : Nat) else 800)")],
+                        f"({q('concatAll')} " + reverse("Bytes", f"(second (second (prim iterate (fun [begin] (walk : {twalk}) => "
+                                                                 f"(taintWalk begin walk)) finish (0, ((taintStart), (nil Bytes))) : {twalk})))")
+                        + ")")))
+    add(definition("wordFull", ["t : " + T], "Bool",
+                   "(prim list_fold (fun (ok : Bool) (x : Bits) => (ok && (bitsSame x (allBits)))) true t : Bool)", axioms=False))
+    fwalk = "(Nat * (TaintState * Reach))"
+    add(definition("fullWalk", ["walk : " + fwalk], fwalk,
+                   lets([("k", "Nat", "(first walk)"), ("ts", "TaintState", "(first (second walk))"),
+                         ("reach", "Reach", "(second (second walk))"), ("result", T, "(taintResult ts k)"),
+                         ("dest", "Nat", f"(project ({b('rowFor')} k) dest)")],
+                        "(((first walk) + 1), ((taintApply ts k result), "
+                        + iff("(((reachAt reach dest) =? 800) && (wordFull result))", "(reachSet reach dest k)", "reach") + "))")))
+    # For each state word, the first round step after which every bit of it
+    # depends on every input bit (800: never). A full word stays full, since
+    # every rule keeps all of a full operand.
+    add(definition("fullTaintSteps", [], "(List Nat)",
+                   f"(reachList (second (second (prim iterate (fun (walk : {fwalk}) => (fullWalk walk)) 784 (0, ((taintStart), "
+                   + record("Reach", [(f"n{i}", "800") for i in range(16)]) + f")) : {fwalk}))))"))
+
+    # The same map at word level: a state word's set of input words (bit w:
+    # message word w; bit 16 + w: initial state word w) as one UInt32.
+    add(definition("maskOf", ["w : Nat"], "UInt32", f"({q('shiftLeft')} (1 : UInt32) ({q('wordOfNat')} w 5))"))
+    add(definition("maskStep", ["masks : " + W16, "k : Nat"], W16,
+                   lets([("row", ROW, f"({b('rowFor')} k)")],
+                        f"({q('setWord')} masks (project row dest) (prim bit_or ({q('getWord')} masks (project row dest)) (match (project row kind)\n"
+                        f"    | {OP}.opAdd => ({q('getWord')} masks (project row source))\n"
+                        f"    | {OP}.opAddMsg => (maskOf ({q('slotWord')} ({b('roundOf')} k) (project row source)))\n"
+                        f"    | {OP}.opXor => ({q('getWord')} masks (project row source))\n    | {OP}.opRor => (0 : UInt32)\n"
+                        f"    | {OP}.opXorCv => (maskOf ((project row source) + 16))) : UInt32))")))
+    add(definition("masksFull", ["masks : " + W16], "Bool",
+                   conj(*[eq(f"(project masks v{i})", u32(FULL_MASK)) for i in range(16)]), axioms=False))
+    mwalk = f"(Nat * ({W16} * Nat))"
+    add(definition("maskWalk", ["walk : " + mwalk], mwalk,
+                   lets([("k", "Nat", "(first walk)"), ("masks", W16, "(maskStep (first (second walk)) k)")],
+                        "(((first walk) + 1), (masks, " + iff("(((second (second walk)) =? 800) && (masksFull masks))", "k",
+                                                              "(second (second walk))") + "))")))
+    start = record(W16, [(f"v{i}", u32(0 if 8 <= i <= 11 else 1 << (16 + i))) for i in range(16)])
+    # The first round step after which every state word depends on every
+    # input word (800: never).
+    add(definition("wordDiffusion", [], "Nat",
+                   f"(second (second (prim iterate (fun (walk : {mwalk}) => (maskWalk walk)) 784 (0, ({start}, 800)) : {mwalk})))"))
+    return decls
+
+
 def render():
     """Every module of the project, by file name: the model and its theorems."""
     key, context, cases = load_vectors()
@@ -906,19 +1315,7 @@ def render():
         mid = (lo + hi + 1) // 2
         return f"(if ({var} <? {mid}) then {tree(var, lo, mid - 1, leaf)} else {tree(var, mid, hi, leaf)})"
 
-    (r1, _), (r2, _), (r3, _), (r4, _) = ROTATIONS
-    schedule = []
-    for g, (a, b, c, d) in enumerate(G_LANES):
-        x, y = 2 * g, 2 * g + 1
-        # G: a += b; a += mx; d ^= a; d >>>= 16; c += d; b ^= c; b >>>= 12;
-        # then the same with my, 8 and 7.
-        for i, (kind, dest, source) in enumerate(
-                [("opAdd", a, b), ("opAddMsg", a, x), ("opXor", d, a), ("opRor", d, r1), ("opAdd", c, d),
-                 ("opXor", b, c), ("opRor", b, r2), ("opAdd", a, b), ("opAddMsg", a, y), ("opXor", d, a),
-                 ("opRor", d, r3), ("opAdd", c, d), ("opXor", b, c), ("opRor", b, r4)]):
-            schedule.append((g, i, kind, dest, source))
-    # The feed-forward: output word i is v[i] ^ v[i+8], or v[i] ^ cv[i-8].
-    schedule += [(0, i, "opXor", i, i + 8) for i in range(8)] + [(0, 8 + i, "opXorCv", 8 + i, i) for i in range(8)]
+    schedule = schedule_rows()
     add(definition("rowAt", ["k : Nat"], "Row",
                    tree("k", 0, len(schedule) - 1, lambda n: (
                        f"(record Row {{g := {schedule[n][0]}, index := {schedule[n][1]}, kind := (ctor Op.{schedule[n][2]}), "
@@ -1300,6 +1697,39 @@ def render():
         "\\importmodule{Blake3Uor.Blake3}\n\\importmodule{Blake3Reverse}\n\\title{Natural number addition}\n"
         "\\begin{semanticmodule}\n" + runs_back + "\\end{semanticmodule}\n\\end{lexlean}\n")
 
+    # Phase 2: slices, and the difference and dependency analysis, each a
+    # project of its own for the same reason as the reverse project.
+    def module(name, imports, body):
+        return (f"\\begin{{lexlean}}{{{name}}}\n\\useglossary{{lexlean.std.nat@1.2.0}}\n"
+                + "".join(f"\\importmodule{{{m}}}\n" for m in imports)
+                + "\\title{Natural number addition}\n\\begin{semanticmodule}\n" + body + "\\end{semanticmodule}\n\\end{lexlean}\n")
+    modules["lexlean-slice/src/Blake3Slice.lex.tex"] = module("Blake3Slice", ["Blake3Uor.Blake3"], "\n".join(render_slice()))
+    # The slice of chunk 1 of the official 1025-byte input against its
+    # official hash: accepted; with one bit of the sibling CV (chunk 0's)
+    # flipped, refused at the root; with the chunk's byte changed, refused at
+    # the chunk. Two compressions each, so the kernel checks them.
+    _, _, cases = load_vectors()
+    cv0, cv1 = (bytes.fromhex(c) for c in SLICE_CVS)
+    header = (1025).to_bytes(8, "little")
+    chunk = message(1025)[1024:]
+    root = cases[1025]["hash"][:32]
+    wrong = bytes([cv0[0] ^ 1]) + cv0[1:]
+    hashing = "(ctor Blake3Uor.Blake3::Mode.hashMode)"
+    result = lambda v: f"(ctor Result.{v} [Bytes, Blake3Slice::SliceError]"
+    for name, data, expected in [
+            ("official_slice_is_accepted", header + cv0 + cv1 + chunk, f"{result('ok')} {literal(chunk)})"),
+            ("wrong_sibling_is_refused", header + wrong + cv1 + chunk, f"{result('error')} (ctor Blake3Slice::SliceError.parent 0))"),
+            ("wrong_chunk_is_refused", header + cv0 + cv1 + bytes([chunk[0] ^ 1]), f"{result('error')} (ctor Blake3Slice::SliceError.chunk))")]:
+        name_module = "Blake3SliceKernel" + "".join(part.capitalize() for part in name.split("_"))
+        statement = f"((Blake3Slice::sliceCheck {hashing} {literal(data)} 1 1025 {literal(root)}) = {expected})"
+        modules[f"lexlean-slice/src/{name_module}.lex.tex"] = module(name_module, ["Blake3Uor.Blake3", "Blake3Slice"],
+                                                                     theorem(name, statement))
+    modules["lexlean-analysis/src/Blake3Analysis.lex.tex"] = module(
+        "Blake3Analysis", ["Blake3Uor.Blake3", "Blake3UorReverse.Blake3Reverse"], "\n".join(render_analysis()))
+    modules["lexlean-analysis/src/Blake3AnalysisKernelWordDiffusion.lex.tex"] = module(
+        "Blake3AnalysisKernelWordDiffusion", ["Blake3Uor.Blake3", "Blake3UorReverse.Blake3Reverse", "Blake3Analysis"],
+        theorem("word_diffusion_step", f"((Blake3Analysis::wordDiffusion) = {word_diffusion()})"))
+
     # Reflexivity theorems against the official vectors, each at most two
     # compressions (a sixteen-compression rfl exhausts 8 GB). Bigger inputs
     # are held by the differential in crates/blake3-check. One theorem per
@@ -1370,7 +1800,8 @@ def render():
 IMAGE = ROOT / "prism" / "Blake3Image.lex.tex"
 IMAGE_MAX_LEN = 8193
 IMAGE_ROOTS = {"hash", "hashHex", "keyedHash", "deriveKey", "hashPieces", "acceptance", "traceFile", "traceAddress",
-               "checkTrace", "cursorMove", "prevAgrees", "seekStep", "stepRoundTrip", "unmix"}
+               "checkTrace", "cursorMove", "prevAgrees", "seekStep", "stepRoundTrip", "unmix",
+               "sliceOf", "sliceCheck", "diffTrace", "diffTraceBack", "diffReach", "taintRound", "fullTaintSteps", "wordDiffusion"}
 
 
 def blocks(module):
@@ -1385,8 +1816,12 @@ def render_image(core_module):
     core, the stdlib's Sha256 under `sha` names, and the trace module, with
     the image's roots marked production and every theorem left out."""
     stdlib = (ROOT / "vendor" / "lexlean-stdlib" / "src" / "Sha256.lex.tex").read_text()
-    ours = blocks(core_module) + render_trace(core="", sha=lambda n: "sha" + n[0].upper() + n[1:]) + render_reverse(core="")
-    taken = {m.group(1) for b in ours for m in [re.match(r"\w+\{\s*name: (\w+),", b)] if m}
+    ours = (blocks(core_module) + render_trace(core="", sha=lambda n: "sha" + n[0].upper() + n[1:]) + render_reverse(core="")
+            + render_slice(core="") + render_analysis(core="", rev=""))
+    names = [m.group(1) for b in ours for m in [re.match(r"\w+\{\s*name: (\w+),", b)] if m]
+    if len(names) != len(set(names)):
+        raise SystemExit(f"the image would declare twice: {sorted({n for n in names if names.count(n) > 1})}")
+    taken = set(names)
     sha_blocks = [b for b in blocks(stdlib) if not b.startswith("theorem{")]
     own = {re.match(r"\w+\{\s*name: (\w+),", b).group(1) for b in sha_blocks}
     tokens = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", "".join(sha_blocks)))

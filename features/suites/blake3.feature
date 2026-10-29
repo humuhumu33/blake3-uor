@@ -97,3 +97,21 @@ Feature: blake3
     Given a four-chunk tree trace
     When the suite exercises B3-16
     Then the root leads to chunk 0's first checkpoint and that checkpoint to its chunk and the events
+
+  @B3-17 @build
+  Scenario: A slice of chunk N (Bao's layout: the input length, the parent nodes on the chunk's path from the root, the chunk) made by the exported sliceOf equals the bao crate's and one built from the blake3 crate's hazmat API, in every mode; the exported sliceCheck accepts it, hashing only the chunk and its path, and Bao's decoder accepts it; a wrong sibling or on-path CV at any level, a changed chunk byte, a short or long chunk, a wrong length field, index, root or key is refused with its own error, and kernel theorems hold the official 1025-byte input's slice accepted and two planted defects refused.
+    Given seeded inputs up to 31,745 bytes and one of 1 MiB + 1, in hash, keyed and derive-key modes
+    When the suite exercises B3-17
+    Then every slice equals both oracles' and checks, Bao accepts the model's, and each planted defect meets its error
+
+  @B3-18 @build
+  Scenario: For two compression inputs differing by one bit, the image's diffTrace (forwards) and diffTraceBack (rebuilt from the outputs) give the same xor of left operand, right operand and result at every step, equal to the certified word-level trace files' records; diffReach gives the step at which the difference reaches each state word; a one-bit input change alters exactly the compressions on its chunk's slice path from the changed block on.
+    Given a keyed 64-byte root compression and each of its message, key, counter, length and flags bits flipped
+    When the suite exercises B3-18
+    Then forwards equals backwards equals the trace files, reach matches the records, and a tree trace differs only on the slice path
+
+  @B3-19 @build
+  Scenario: The image's dependency map (for each result bit of each step, the input bits with a structural path to it) equals a propagation written from the BLAKE3 specification; every observed difference of every message and key bit lies inside it; the first step of full diffusion (every bit of every state word on every input bit) is fullTaintSteps' maximum, and at word level a kernel theorem fixes it at step 163.
+    Given the map of every round from taintRound, and the 768 observed difference traces
+    When the suite exercises B3-19
+    Then the map equals the specification's, holds every observed difference, and the diffusion steps agree

@@ -1,0 +1,16 @@
+\begin{lexlean}{Blake3AnalysisKernelWordDiffusion}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3Uor.Blake3}
+\importmodule{Blake3UorReverse.Blake3Reverse}
+\importmodule{Blake3Analysis}
+\title{Natural number addition}
+\begin{semanticmodule}
+theorem{
+  name: word_diffusion_step,
+  parameters: [],
+  statement: ((Blake3Analysis::wordDiffusion) = 163),
+  proof: reflexivity{},
+  axioms: [Quot.sound, propext]
+}
+\end{semanticmodule}
+\end{lexlean}

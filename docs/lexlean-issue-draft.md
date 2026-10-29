@@ -30,6 +30,8 @@ but no `Nat` read from data certify at 1.9 GB; a small module that reads a
 | `traceFile`, `traceAddress` (same traced BLAKE3 and `Sha256` closure, no `Nat` from data) | none | 6 GB | exported, 1.9 GB peak |
 | tiny module: `iterate_until` over `Bytes` whose step adds `natOfWord` of a word read at the position | 32-step doubling loop | 6 GB | exported, 1.4 GB peak |
 | `stepRoundTrip (kind : Nat) (left right : UInt32) : Bool` in `lexlean-reverse`: `undo op (perform op left right) right == left`, a few word operations (certificate source 200 KB) | none | 6 GB | killed while compiling its certificate |
+| `diffTrace`, `diffTraceBack`, `diffReach`, `taintRound` in `lexlean-analysis` (imports the core and `lexlean-reverse`; no `Nat` from data) | none | 6 GB | killed (OOM) after 3 min 41 s |
+| `sliceOf`, `sliceCheck` in `lexlean-slice` (imports the core only; the input length is a parameter, compared word by word with the slice's field) | none | 6 GB | exported, 1.8 GB peak, 283 s |
 
 `parse_decimal` was tried as a fifth route (`format_decimal` of the word, then
 `parse_decimal` to `Option Nat`); linking refuses it: `LLT4001: primitive
@@ -69,7 +71,10 @@ LEXLEAN_VERIFY_WIDTH=1 systemd-run --user --scope -p MemoryMax=6G -p MemorySwapM
 
 A second case without any `Nat` from data: in a project whose other roots
 include the traced hash (`unmix`, `prevAgrees`, `seekStep`), the certificate of
-the tiny `stepRoundTrip` root ran out of 6 GB.
+the tiny `stepRoundTrip` root ran out of 6 GB. Every root that failed without a
+`Nat` from data has `lexlean-reverse`'s definitions in its closure (`undo`,
+`operand`, `rowFor`, `roundOf`); roots over the same traced hash without them
+(`traceFile`, `traceAddress`, `sliceOf`, `sliceCheck`) certify at 1.8 to 1.9 GB.
 
 ## Question for the owner
 

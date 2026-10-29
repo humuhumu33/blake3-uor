@@ -313,6 +313,72 @@ pub fn lex_trace_address(mode: Mode<'_>, pieces: &[&[u8]], out_len: usize) -> Re
     }
 }
 
+/// The Bao slice of chunk `chunk` of `input` (empty when there is no such
+/// chunk), through the exported package; a key that is not 32 bytes gives
+/// its length.
+pub fn lex_slice_of(mode: Mode<'_>, input: &[u8], chunk: usize) -> Result<Vec<u8>, u64> {
+    let run = blake3_slice_of::run(
+        lex_mode!(blake3_slice_of, mode),
+        blake3_slice_of::Bytes::lit(input),
+        width(chunk),
+    );
+    match run.expect("no overflow below 2^64") {
+        Ok(slice) => Ok(slice.octets().to_vec()),
+        Err(blake3_slice_of::Adt1::C0(len)) => Err(len),
+    }
+}
+
+/// Why `sliceCheck` refused a slice: its `SliceError` constructor, with the
+/// tree level for a parent node and the length for a key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SliceRejection {
+    /// The key is not 32 bytes; its length.
+    KeyLength(u64),
+    /// The input has no such chunk.
+    OutOfRange,
+    /// The slice's length field is not the input length.
+    Header,
+    /// The root hash is not 32 bytes.
+    RootLength,
+    /// The parent node at this level (0 the root) does not hash to the CV
+    /// expected for it, or is missing.
+    Parent(u64),
+    /// The chunk is not as long as the input length makes it.
+    Size,
+    /// The chunk does not hash to the CV expected for it.
+    Chunk,
+}
+
+/// `sliceCheck` through the exported package: the chunk, if `slice` proves
+/// it is chunk `chunk` of an input of `len` bytes whose 32-byte hash in
+/// `mode` is `root`.
+pub fn lex_slice_check(
+    mode: Mode<'_>,
+    slice: &[u8],
+    chunk: usize,
+    len: usize,
+    root: &[u8],
+) -> Result<Vec<u8>, SliceRejection> {
+    use blake3_slice_check::{Adt1, Bytes};
+    let run = blake3_slice_check::run(
+        lex_mode!(blake3_slice_check, mode),
+        Bytes::lit(slice),
+        width(chunk),
+        width(len),
+        Bytes::lit(root),
+    );
+    match run.expect("no overflow below 2^64") {
+        Ok(data) => Ok(data.octets().to_vec()),
+        Err(Adt1::C0(n)) => Err(SliceRejection::KeyLength(n)),
+        Err(Adt1::C1) => Err(SliceRejection::OutOfRange),
+        Err(Adt1::C2) => Err(SliceRejection::Header),
+        Err(Adt1::C3) => Err(SliceRejection::RootLength),
+        Err(Adt1::C4(level)) => Err(SliceRejection::Parent(level)),
+        Err(Adt1::C5) => Err(SliceRejection::Size),
+        Err(Adt1::C6) => Err(SliceRejection::Chunk),
+    }
+}
+
 /// `checkTrace` on each file, run by the LexLean calculus engine in the
 /// committed Prism image (`prism/IMAGE`, `prism/registry/`) through
 /// `prism/trace-checks.mjs`: the root's DigestSet, or the refusal. The
@@ -436,6 +502,32 @@ pub fn engine_calls(calls: &[(&str, serde_json::Value)]) -> Vec<serde_json::Valu
         String::from_utf8_lossy(&out.stderr)
     );
     serde_json::from_slice(&out.stdout).expect("a JSON array of values")
+}
+
+/// [`engine_calls`] dealt round-robin to `processes` engines at once, the
+/// values back in call order: the phase-2 roots take seconds a call.
+pub fn engine_calls_parallel(
+    calls: &[(&str, serde_json::Value)],
+    processes: usize,
+) -> Vec<serde_json::Value> {
+    let processes = processes.clamp(1, calls.len().max(1));
+    let parts: Vec<Vec<serde_json::Value>> = std::thread::scope(|scope| {
+        let running: Vec<_> = (0..processes)
+            .map(|p| {
+                let part: Vec<(&str, serde_json::Value)> =
+                    calls.iter().skip(p).step_by(processes).cloned().collect();
+                scope.spawn(move || engine_calls(&part))
+            })
+            .collect();
+        running
+            .into_iter()
+            .map(|part| part.join().expect("an engine process"))
+            .collect()
+    });
+    let mut parts: Vec<_> = parts.into_iter().map(Vec::into_iter).collect();
+    (0..calls.len())
+        .map(|k| parts[k % processes].next().expect("a value per call"))
+        .collect()
 }
 
 /// Engine values.

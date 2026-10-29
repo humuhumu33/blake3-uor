@@ -148,6 +148,8 @@ typed `TraceError` naming the offset where it was found.
 | `traceFile`, `traceAddress` | yes, from the trace project | Rust, and the image's engine |
 | `checkTrace` | **no** | the LexLean calculus engine in the Prism image (`prism/IMAGE`) only |
 | `unmix`, `stepRoundTrip`, `prevAgrees`, `cursorMove`, `seekStep` (phase 1) | **no** | the Prism image's engine only; the module and its kernel theorem are verified in `lexlean-reverse/` |
+| `sliceOf`, `sliceCheck` (phase 2) | yes, from the slice project | Rust (`export/rust-std/blake3_slice_*`), and the image's engine |
+| `diffTrace`, `diffTraceBack`, `diffReach`, `taintRound`, `fullTaintSteps`, `wordDiffusion` (phase 2) | **no** | the Prism image's engine only; the module and its kernel theorem are verified in `lexlean-analysis/` |
 
 `checkTrace` and the phase-1 roots are verified LexLean definitions: Lean checks its module and the
 engine runs its lowered program, the same program format and engine as every
@@ -156,6 +158,10 @@ not certified Rust, and nothing here should be read as saying they are. The
 phase-1 roots were tried as rust-std exports too: `stepRoundTrip`, whose
 program is a few word operations and whose certificate source is 200 KB, ran
 out of 6 GB like `checkTrace` ([lexlean-issue-draft.md](lexlean-issue-draft.md)).
+So did the phase-2 analysis roots, in one attempt (`diffTrace`,
+`diffTraceBack`, `diffReach`, `taintRound` at 6 GB), while the slice roots,
+over the same traced hash but without the reverse project's definitions,
+certified at 1.8 GB.
 
 `checkTrace` has no rust-std export. Its preservation certificate does not
 compile within 11 GB whenever the checker computes a `Nat` from the file's
@@ -235,3 +241,66 @@ share one label (B3-11).
 | stepping back agrees with replaying forward at every step | test B3-15, in the engine |
 | the cursor's moves and `seekStep`'s records | test B3-15 against the word-level file |
 | navigation by label | test B3-16 |
+
+## Slices, differences and dependencies
+
+**Verified slices** (`lexlean-slice/`). A slice of chunk N is Bao's layout
+for one chunk, so Bao's decoder reads it: the input length (8 bytes,
+little-endian), the parent nodes on the chunk's path from the root (64 bytes
+each: the left child's CV, then the right's), then the chunk. The tree is
+BLAKE3's: a subtree of n > 1 chunks has the largest power of two below n on
+its left. `sliceOf (mode, input, N)` reads every CV from the trace's nodes
+(a chunk's last block, or a non-root parent, by origin and span).
+`sliceCheck (mode, slice, N, len, root)` checks from the root down: the
+length field must be `len`; each parent node, compressed with the PARENT
+flag (and ROOT at the top), must give the CV expected for its subtree, the
+root hash at the top; the expected CV of the next level is the half of the
+node on the chunk's side; the chunk, compressed with counter N, must give
+the last expected CV. It hashes the chunk and the log2(n) parents on its
+path and nothing else, and returns the chunk or a `SliceError` (key length,
+chunk out of range, length field, root length, parent at level L, chunk size,
+chunk). Both are certified Rust packages (`blake3_slice_of`,
+`blake3_slice_check`). The input length is a parameter, compared word by
+word with the slice's field, so no `Nat` is read from the slice's bytes.
+
+**Difference traces** (`lexlean-analysis/`). For two compression inputs
+(`Input`: CV, block, counter, length, flags), `diffTrace` is, for each of the
+800 steps, the xor of the two runs' left operands, right operands and
+results: 12 bytes a step, 9,600 a compression. `diffTraceBack` computes the
+same from each run's 16 output words, message and CV alone: the feed-forward
+steps read the state after round 6, which `unfeed` recovers, and every round
+step is then undone from the last (`undo`), so its operands and result come
+back without running forwards. `diffReach` gives, for each state word, the
+first step after which the two runs differ in it (0 when their initial states
+already do, 800 never).
+
+**Dependency map.** For each bit of each step's result, the set of input bits
+with a structural path to it in the bit-level circuit: bit i of a sum depends
+on bits 0 to i of both operands (the carry chain), bit i of an xor on bit i of
+both, bit i of a right rotation by n on bit i + n mod 32. The inputs are the
+512 message bits and the initial state's: the CV (256), counter (64), block
+length (32) and flags (32); the four IV words are constants and carry no
+input bits. A set is 1,024 bits (message words, then initial state words,
+little-endian), 128 bytes. The map does not depend on the values, so one map
+serves every compression: `taintRound r` gives round r's steps (7 is the
+feed-forward), 32 sets per step, 4,096 bytes; 3,276,800 bytes in all.
+`fullTaintSteps` gives, per state word, the first step after which every bit
+of it depends on every input bit; a full word stays full, since every rule
+keeps all of a full operand. `wordDiffusion` is the same question at word
+level (a word's set of input words, one `UInt32`). Structural taint is an
+upper bound: a bit outside a step's set can never change it, while a bit
+inside may or may not, which is what the difference traces observe.
+
+These analysis roots run in the Prism image's engine (their rust-std
+certificate ran out of 6 GB); the module and its kernel theorem are verified
+in `lexlean-analysis/`.
+
+| Claim | How |
+| --- | --- |
+| chunk 1 of the official 1025-byte input: its slice checks against the official hash | kernel theorem by reflexivity, `lexlean-slice/` |
+| the same slice with one bit of the sibling CV flipped is refused at the root; with its byte changed, at the chunk | two kernel theorems by reflexivity |
+| slices equal the `bao` crate's and hazmat-built ones in every mode, check, and Bao accepts them; planted defects refused | test B3-17, certified Rust |
+| forwards = backwards = the certified trace files' records, at every step | test B3-18, in the engine, against `traceFile` |
+| a one-bit input change alters exactly the compressions on its chunk's slice path | test B3-18 |
+| the map equals one written from the specification; every observed difference lies inside it | test B3-19, in the engine |
+| every state word depends on every input word after step 163 | kernel theorem by reflexivity (`wordDiffusion`), `lexlean-analysis/` |

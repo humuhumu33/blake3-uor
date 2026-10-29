@@ -9,7 +9,10 @@ word and bit levels as ADR-015 content blobs (`blake3:` labels and
 `{sha256, blake3}` DigestSets), and `checkTrace` replays one from its finest
 level. A compression also runs backwards from its full output, given its
 message and CV, and a cursor seeks and steps through any trace by bit, op, G,
-round or compression. No hashing operation is handwritten Rust.
+round or compression. A Bao slice proves one chunk against the root hash
+through the parent CVs on its path, and difference traces and a dependency
+map follow every bit through one compression. No hashing operation is
+handwritten Rust.
 
 ## Status
 
@@ -34,8 +37,10 @@ until a public SDK release exists to bind. Nothing here substitutes for it.
 | `lexlean/src/Blake3Kernel*.lex.tex` | One kernel theorem each: projections for every input, official vectors for tiny ones |
 | `lexlean-trace/src/Blake3Trace.lex.tex` | Blobs, DigestSets, the tree/word/bit files, `traceFile`, `traceAddress`, `checkTrace` |
 | `lexlean-reverse/src/Blake3Reverse*.lex.tex` | Inverse steps, `compressBack`, the cursor and seek, and the run-back kernel theorem |
+| `lexlean-slice/src/Blake3Slice*.lex.tex` | Bao slices (`sliceOf`, `sliceCheck`) and three kernel theorems on the official 1025-byte input |
+| `lexlean-analysis/src/Blake3Analysis*.lex.tex` | Difference traces, the dependency map, and the word-diffusion kernel theorem |
 | `vendor/lexlean-stdlib/` | LexLean's stdlib (Sha256), byte for byte from LexLean main `6bcc8d598` |
-| `export/` | The certified packages and attestations both production builds wrote |
+| `export/` | The certified packages and attestations the production builds wrote, and the verified projects' attestations |
 | `crates/blake3-check/` | Tests, the independent trace reader, throughput and trace-size measurements |
 | `oracles/blake3-1.8.7/` | The official vectors, untrusted data, checksum in `model/authorities.toml` |
 | `prism/` | The image model, the committed image (`IMAGE`, `registry/`), its engine loader and checks |
@@ -52,6 +57,10 @@ until a public SDK release exists to bind. Nothing here substitutes for it.
 | `traceFile` | `Mode -> List Bytes -> Nat -> Nat -> Result Bytes Blake3Error`: the serialised trace at level 0, 1 or 2 |
 | `traceAddress` | `Mode -> List Bytes -> Nat -> Result Bytes Blake3Error`: the root blob's DigestSet |
 | `checkTrace` | `Bytes -> Result Bytes TraceError`, in the Prism image: the root's DigestSet, or the refusal |
+| `sliceOf` | `Mode -> Bytes -> Nat -> Result Bytes Blake3Error`: the Bao slice of chunk N |
+| `sliceCheck` | `Mode -> Bytes -> Nat -> Nat -> Bytes -> Result Bytes SliceError` (slice, chunk, input length, root hash): the chunk, or the refusal |
+| `diffTrace`, `diffTraceBack`, `diffReach` | `Input -> Input -> …`, in the Prism image: per step, the xor of both runs' operands and results; the step each state word first differs |
+| `taintRound`, `fullTaintSteps`, `wordDiffusion` | in the Prism image: round r's dependency map; the steps of full diffusion |
 
 ## Regenerate
 
@@ -59,9 +68,11 @@ until a public SDK release exists to bind. Nothing here substitutes for it.
 LEXLEAN=~/lexlean-main/target/release/lexlean python3 -I tools/gen_blake3.py
 ```
 
-Then, in `lexlean/` and in `lexlean-trace/`, `LEXLEAN_VERIFY_WIDTH=1 lexlean
-production build --request production-request.json`, and copy each bundle's
-packages and attestation to `export/`. `cargo test -p blake3-check` runs the
+Then, in `lexlean/`, `lexlean-trace/` and `lexlean-slice/`,
+`LEXLEAN_VERIFY_WIDTH=1 lexlean production build --request
+production-request.json`, and copy each bundle's packages and attestation to
+`export/`; in `lexlean-reverse/` and `lexlean-analysis/`, `LEXLEAN_VERIFY_WIDTH=1
+lexlean verify`. `cargo test -p blake3-check` runs the
 tests; the trace checker's tests need `node` for the image's engine. Width 1
 keeps one Lean process at a time; each build peaks near 3.3 GB.
 
