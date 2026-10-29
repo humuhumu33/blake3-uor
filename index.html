@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BLAKE3 in LexLean</title>
+<meta name="description" content="BLAKE3 written as a checked LexLean model, run in your browser from a content-addressed Prism image.">
+<style>
+  :root {
+    --bg: #fafaf9; --fg: #1c1c1a; --muted: #6b6b66; --line: #e4e4e0; --card: #ffffff;
+    --accent: #2f5bd3; --ok: #1f7a3a; --bad: #b42318;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1f1f1e; --fg: #ececea; --muted: #9b9b96; --line: #34342f; --card: #262624;
+      --accent: #8aa8ff; --ok: #5cc27a; --bad: #ff7b6e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 48px 16px 64px; }
+  h1 { font-size: 28px; margin: 0 0 8px; letter-spacing: -0.01em; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 40px 0 12px; }
+  p { margin: 0 0 12px; }
+  .lede { color: var(--muted); font-size: 17px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 14px 0 6px; }
+  textarea, input { width: 100%; font: 15px/1.4 ui-monospace, "SF Mono", Consolas, monospace;
+    color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+  textarea { min-height: 84px; resize: vertical; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+  .row > div { flex: 1 1 160px; }
+  .modes { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; width: fit-content; }
+  .modes button { border: 0; background: transparent; color: var(--fg); padding: 8px 14px; font: inherit; font-size: 14px; cursor: pointer; }
+  .modes button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .go { margin-top: 18px; background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+    padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer; }
+  .go:disabled { opacity: 0.5; cursor: default; }
+  .hint { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .out { margin-top: 18px; display: none; }
+  .out dt { font-size: 13px; color: var(--muted); margin-top: 10px; }
+  .out dd { margin: 2px 0 0; font: 14px/1.45 ui-monospace, Consolas, monospace; word-break: break-all; }
+  .ok { color: var(--ok); font-weight: 600; }
+  .bad { color: var(--bad); font-weight: 600; }
+  ol { padding-left: 20px; margin: 0; }
+  ol li { margin-bottom: 8px; }
+  code { font: 14px ui-monospace, Consolas, monospace; }
+  .status { font-size: 14px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 12px; }
+  td { padding: 6px 0; border-top: 1px solid var(--line); }
+  td:last-child { text-align: right; }
+  a { color: var(--accent); }
+  footer { margin-top: 40px; font-size: 14px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>BLAKE3 in LexLean</h1>
+  <p class="lede">A hash function written as a checked model, not hand-written code, and run right here in your
+    browser. Every part is checked against its SHA-256 before it runs, so the code you run is exactly the
+    published image.</p>
+
+  <h2>Try it</h2>
+  <div class="card">
+    <div class="modes" role="group" aria-label="Mode">
+      <button data-mode="hash" aria-pressed="true">hash</button>
+      <button data-mode="keyed" aria-pressed="false">keyed hash</button>
+      <button data-mode="derive" aria-pressed="false">derive key</button>
+    </div>
+    <label for="input">Input (text)</label>
+    <textarea id="input" spellcheck="false">hello world</textarea>
+    <div class="hint" id="size"></div>
+    <div class="row">
+      <div id="extraBox" hidden>
+        <label for="extra" id="extraLabel">Key (exactly 32 bytes)</label>
+        <input id="extra" spellcheck="false" value="whats the Elvish word for friend">
+      </div>
+      <div style="flex: 0 1 140px">
+        <label for="len">Output bytes</label>
+        <input id="len" type="number" min="1" max="256" value="32">
+      </div>
+    </div>
+    <button class="go" id="go" disabled>Hash</button>
+    <span class="status" id="status">Loading the image…</span>
+    <dl class="out" id="out">
+      <dt>LexLean model, in the Prism engine</dt><dd id="model"></dd>
+      <dt>Independent reference (<a href="https://github.com/paulmillr/noble-hashes">@noble/hashes</a>)</dt><dd id="ref"></dd>
+      <dt>Verdict</dt><dd id="verdict"></dd>
+    </dl>
+  </div>
+
+  <h2>How it runs</h2>
+  <ol>
+    <li>Your browser fetches the Prism image <code title="f20bd6c0a76c6a1020e448140791f98dfa133257ae251ed8ddbbb36be0f7da9f">f20bd6c0…</code>
+      and checks every part against its SHA-256. <span class="status" id="parts"></span></li>
+    <li>The image's WebAssembly engine runs the LexLean programs <code>hash</code>, <code>keyedHash</code> and
+      <code>deriveKey</code>. No line of the hashing is hand-written.</li>
+    <li>A separate BLAKE3 library computes the same thing, and the page compares the two.</li>
+  </ol>
+
+  <h2>Check it against the official vectors</h2>
+  <p>Nine of the official BLAKE3 test vectors: inputs of 0, 64 and 65 bytes in all three modes.</p>
+  <button class="go" id="vectors" disabled style="margin-top: 0">Run the check</button>
+  <table id="vtable" hidden></table>
+
+  <footer>
+    <p>Slow on purpose: the model records every step of BLAKE3 as a trace, about a second per 64-byte block
+      here, so inputs stop at 1 KiB. The same model, exported as certified Rust, matches all 35 official vectors and the
+      <code>blake3</code> crate in every mode (tests B3-01 to B3-04).</p>
+    <p><a href="https://github.com/humuhumu33/blake3-uor">Source</a> ·
+      <a href="https://github.com/humuhumu33/blake3-uor/blob/29bf808b716cbfb9b896371aec1fc1f984d3053a/docs/blake3-verification.md">Evidence and limits</a></p>
+  </footer>
+</main>
+<script type="module">
+import { blake3 } from "https://cdn.jsdelivr.net/npm/@noble/hashes@1.4.0/esm/blake3.js/+esm";
+import { openImage } from "./engine.js";
+
+const $ = (id) => document.getElementById(id);
+const enc = new TextEncoder();
+const toHex = (u8) => Array.from(u8, (b) => b.toString(16).padStart(2, "0")).join("");
+const MAX = 1024;
+let mode = "hash", ready = false, image;
+
+// Let the browser paint the status before the engine holds the thread.
+const paint = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+async function engine(job) {
+  await paint();
+  const started = performance.now();
+  try { return { ...image.run(job), ms: performance.now() - started }; }
+  catch (e) { return { error: String(e.message ?? e) }; }
+}
+
+let parts = 0, bytesSeen = 0;
+openImage((label, size) => {
+  parts++; bytesSeen += size;
+  $("parts").textContent = `${parts} parts, ${(bytesSeen / 1e6).toFixed(1)} MB, all verified.`;
+  $("status").textContent = `Verified ${label}…`;
+}).then(async (opened) => {
+  image = opened;
+  $("status").textContent = "Warming up the engine (one time, a few seconds)…";
+  await engine({ mode: "hash", input: "", extra: "", len: 32 });
+  ready = true; $("status").textContent = "Ready."; update();
+}).catch((e) => { $("status").innerHTML = `<span class="bad">Could not load: ${e.message ?? e}</span>`; });
+
+function update() {
+  const n = enc.encode($("input").value).length;
+  const blocks = Math.max(1, Math.ceil(n / 64));
+  $("size").textContent = n > MAX ? `${n} bytes: over the 1 KiB limit for the in-browser engine.`
+    : `${n} bytes, about ${blocks} second${blocks > 1 ? "s" : ""}.`;
+  const extra = enc.encode($("extra").value).length;
+  $("extraLabel").textContent = mode === "keyed" ? `Key (exactly 32 bytes; now ${extra})` : "Context string";
+  $("go").disabled = !ready || n > MAX;
+  $("vectors").disabled = !ready;
+}
+document.querySelectorAll(".modes button").forEach((b) => b.onclick = () => {
+  mode = b.dataset.mode;
+  document.querySelectorAll(".modes button").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+  $("extraBox").hidden = mode === "hash";
+  $("extra").value = mode === "keyed" ? "whats the Elvish word for friend" : "BLAKE3 2019-12-27 16:29:52 test vectors context";
+  update();
+});
+["input", "extra", "len"].forEach((id) => $(id).addEventListener("input", update));
+
+function reference(m, input, extra, len) {
+  if (m === "hash") return toHex(blake3(input, { dkLen: len }));
+  if (m === "keyed") return extra.length === 32 ? toHex(blake3(input, { dkLen: len, key: extra })) : null;
+  return toHex(blake3(input, { dkLen: len, context: extra }));
+}
+
+$("go").onclick = async () => {
+  const input = enc.encode($("input").value), extra = enc.encode($("extra").value);
+  const len = Math.min(256, Math.max(1, Number($("len").value) || 32));
+  $("go").disabled = true; $("status").textContent = "Hashing in the model…"; $("out").style.display = "none";
+  const got = await engine({ mode, input: toHex(input), extra: toHex(extra), len });
+  const ref = reference(mode, input, extra, len);
+  $("out").style.display = "block";
+  if (got.error) { $("model").innerHTML = `<span class="bad">${got.error}</span>`; }
+  else if (got.refused) { $("model").textContent = `refused: ${got.refused} (the key must be 32 bytes)`; }
+  else { $("model").textContent = got.hex; }
+  $("ref").textContent = ref ?? "refused: the key must be 32 bytes";
+  const agree = got.hex ? got.hex === ref : (got.refused && ref === null);
+  $("verdict").innerHTML = agree ? `<span class="ok">Match</span>` : `<span class="bad">Mismatch</span>`;
+  $("status").textContent = got.ms ? `Done in ${(got.ms / 1000).toFixed(1)} s.` : "";
+  update();
+};
+
+// From oracles/blake3-1.8.7/test_vectors.json (BLAKE3 release 1.8.7): the first
+// 32 bytes of each output. Input n is the bytes i % 251 for i < n.
+const KEY = "whats the Elvish word for friend", CONTEXT = "BLAKE3 2019-12-27 16:29:52 test vectors context";
+const VECTORS = [
+  [0, "hash", "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"],
+  [0, "keyed", "92b2b75604ed3c761f9d6f62392c8a9227ad0ea3f09573e783f1498a4ed60d26"],
+  [0, "derive", "2cc39783c223154fea8dfb7c1b1660f2ac2dcbd1c1de8277b0b0dd39b7e50d7d"],
+  [64, "hash", "4eed7141ea4a5cd4b788606bd23f46e212af9cacebacdc7d1f4c6dc7f2511b98"],
+  [64, "keyed", "ba8ced36f327700d213f120b1a207a3b8c04330528586f414d09f2f7d9ccb7e6"],
+  [64, "derive", "a5c4a7053fa86b64746d4bb688d06ad1f02a18fce9afd3e818fefaa7126bf73e"],
+  [65, "hash", "de1e5fa0be70df6d2be8fffd0e99ceaa8eb6e8c93a63f2d8d1c30ecb6b263dee"],
+  [65, "keyed", "c0a4edefa2d2accb9277c371ac12fcdbb52988a86edc54f0716e1591b4326e72"],
+  [65, "derive", "51fd05c3c1cfbc8ed67d139ad76f5cf8236cd2acd26627a30c104dfd9d3ff8a8"],
+];
+const NAMES = { hash: "hash", keyed: "keyed hash", derive: "derive key" };
+
+$("vectors").onclick = async () => {
+  $("vectors").disabled = true;
+  const t = $("vtable"); t.hidden = false; t.innerHTML = "";
+  let passed = 0;
+  for (const [n, m, want] of VECTORS) {
+    const row = t.insertRow();
+    row.insertCell().textContent = `${n} bytes, ${NAMES[m]}`;
+    const cell = row.insertCell(); cell.textContent = "running…";
+    const input = toHex(Uint8Array.from({ length: n }, (_, i) => i % 251));
+    const extra = toHex(enc.encode(m === "keyed" ? KEY : CONTEXT));
+    const got = await engine({ mode: m, input, extra, len: 32 });
+    const ok = got.hex === want; if (ok) passed++;
+    cell.innerHTML = ok ? `<span class="ok">pass</span>` : `<span class="bad">fail</span>`;
+  }
+  const row = t.insertRow();
+  row.insertCell().innerHTML = "<strong>Official vectors</strong>";
+  row.insertCell().innerHTML = passed === VECTORS.length ? `<span class="ok">${passed}/${VECTORS.length}</span>` : `<span class="bad">${passed}/${VECTORS.length}</span>`;
+  $("vectors").disabled = false;
+};
+update();
+</script>
+</body>
+</html>
