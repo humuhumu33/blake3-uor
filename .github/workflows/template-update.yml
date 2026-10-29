@@ -47,7 +47,7 @@ jobs:
           TEMPLATE_REVISION: ${{ inputs.template-revision }}
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           [[ $SDK_IMAGE =~ ^[a-z0-9.-]+(:[0-9]{1,5})?/[a-z0-9./_-]+@sha256:[0-9a-f]{64}$ ]]
           [[ $ACTION_REFERENCE =~ ^UOR-Foundation/PrismPM/action@[0-9a-f]{40}$ ]]
           [[ $TEMPLATE_REVISION =~ ^[0-9a-f]{40}$ ]]
@@ -100,7 +100,7 @@ jobs:
             --volume "$PWD:/workspace" \
             --workdir /workspace \
             "$SDK_IMAGE" \
-            prismpm --json template check >/tmp/template-check.json
+            prismpm --json template check | tee /tmp/template-check.json
           update=$(docker run --rm \
             --user "$(id -u):$(id -g)" \
             --network none \
@@ -110,6 +110,9 @@ jobs:
             --workdir /workspace \
             "$SDK_IMAGE" \
             prismpm --json template update --sdk-image "$SDK_IMAGE" --template-revision "$TEMPLATE_REVISION")
+          printf 'UPDATE %s
+' "$update"
+          git status --short
           docker run --rm --interactive --network none --cap-drop ALL \
             --security-opt no-new-privileges --entrypoint node "$SDK_IMAGE" -e \
             'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{if(JSON.parse(s).changed)process.exit(1)})' <<<"$update"
