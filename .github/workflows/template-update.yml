@@ -132,6 +132,7 @@ jobs:
           name: template-update-proposal
           if-no-files-found: error
           path: .template-update.patch
+          include-hidden-files: true
           retention-days: 1
 
   open-pull-request:
