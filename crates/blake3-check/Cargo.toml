@@ -38,7 +38,7 @@ serde_json = "1"
 # BLAKE3 authors, whose slice layout and root hash the LexLean slices follow.
 bao = "=0.13.1"
 # The provenance records name package files by sha256.
-sha2 = "0.10"
+sha2 = "0.11"
 # The register, to read the vendored stdlib's cited checksum.
 repo-model = { workspace = true }
 
