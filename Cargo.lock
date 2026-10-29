@@ -33,6 +33,7 @@ dependencies = [
  "blake3_keyed_hash",
  "blake3_trace_address",
  "blake3_trace_file",
+ "repo-model",
  "serde_json",
  "sha2",
 ]

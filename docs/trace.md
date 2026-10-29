@@ -42,16 +42,30 @@ object down to a compression is a content blob. Its label is
 blob's exact bytes. Its DigestSet is `{"blake3": â€¦, "sha256": â€¦}` over the same
 bytes, and a verifier requires and checks both. In binary form a DigestSet is
 its 32 BLAKE3 bytes followed by its 32 SHA-256 bytes. The `blake3` axis is
-this model's own hash; the `sha256` axis is LexLean's stdlib `Sha256`, vendored
-byte for byte from LexLean main `6bcc8d598` under `vendor/lexlean-stdlib/`.
+this model's own hash; the `sha256` axis is LexLean's stdlib `Sha256`.
+
+The stdlib is vendored byte for byte from LexLean main `6bcc8d598` under
+`vendor/lexlean-stdlib/`. AGENTS.md R6 bars path substitutes for shipped
+dependencies, and this is a path source, but it is the only form LexLean
+accepts: a source package is read from a directory of the workspace, `kind`
+`path` and nothing else (SPEC 10.5), so there is nothing to fetch or lock
+remotely. The copy is held to upstream by B3-12: its files must be exactly
+upstream's three, the listing of their sha256 digests must hash to
+`AUTH-LEXLEAN-STDLIB`'s checksum `0990190f…` (reproduce upstream with `git show
+6bcc8d598:stdlib/<path> | sha256sum`), and the trace lock must pin its manifest
+(LexLean's own `lock --check` pins the tree, `tree_sha256` `c0be8a51…`).
 
 A step finer than a compression is not a blob. Its address is a path inside its
 compression's blob: `(checkpoint label, round, G index, op index, bit index)`.
 Round 7 is the feed-forward; its G index is 0 and its op index is the output
 word. Every blob is a pure function of (mode, key or context, input, outLen),
-so identical sub-computations have one address. The labels are computed over
-the trace by the projection-defined `hash`; the trace itself carries no
-labels, so there is no self-reference.
+so identical sub-computations have one address.
+
+The hashing that computes the labels is not itself traced. A label is the
+model's `hash` of a blob's bytes, and `hash` is a projection of that blob's
+own trace, but that trace is discarded and never addressed: the trace of an
+input contains its own compressions, never the compressions of its labels.
+That is why there is no loop.
 
 ## Integers and words
 
@@ -128,18 +142,28 @@ typed `TraceError` naming the offset where it was found.
 
 ## Where each part runs
 
-| Part | Runs as |
-| --- | --- |
-| hash, keyedHash, deriveKey, hashPieces, hashHex | certified rust-std packages (`export/rust-std/blake3_*`), the core project |
-| traceFile, traceAddress | certified rust-std packages, the trace project |
-| checkTrace | the LexLean calculus engine in the Prism image (`prism/IMAGE`), the same lowered programs the image's other roots run |
+| Root | Certified rust-std package | Runs on |
+| --- | --- | --- |
+| `hash`, `keyedHash`, `deriveKey`, `hashPieces`, `hashHex` | yes, from the core project | Rust (`export/rust-std/blake3_*`), and the image's engine |
+| `traceFile`, `traceAddress` | yes, from the trace project | Rust, and the image's engine |
+| `checkTrace` | **no** | the LexLean calculus engine in the Prism image (`prism/IMAGE`) only |
+
+`checkTrace` is a verified LexLean definition: Lean checks its module and the
+engine runs its lowered program, the same program format and engine as every
+other image root (whose program ids equal their Rust packages'). It is not
+certified Rust, and nothing here should be read as saying it is.
 
 `checkTrace` has no rust-std export. Its preservation certificate does not
 compile within 11 GB whenever the checker computes a `Nat` from the file's
 bytes, by any of four conversions tried (a 32-step loop doubling a `Nat`, the
 sum written out, a byte table in base 256, a search over `wordOfNat`); with the
 conversion replaced by a constant it compiles at 3.5 GB, and `parse_decimal`
-refuses a `Nat` target (LLT4001). Two other certificate blowups were found and
+refuses a `Nat` target (LLT4001). A time-boxed attempt to read no `Nat` from
+the file (positions from counters, file values compared as words) failed the
+same way at 6 GB, and a tiny module reading a `Nat` from bytes certifies at
+1.4 GB, so the trigger is that conversion inside a closure as large as the
+traced BLAKE3 plus `Sha256`. The measurements and a reproduction are in
+[lexlean-issue-draft.md](lexlean-issue-draft.md), unfiled. Two other certificate blowups were found and
 fixed on the way, each recorded where it applies: a 256-leaf lookup called
 inside a loop closure (`bitByte` replaces it), and the hash, trace and check
 roots in one project (two projects, each with its own roots).

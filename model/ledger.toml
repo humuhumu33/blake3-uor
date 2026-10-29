@@ -32,3 +32,9 @@ statement = "A local Prism image of prism/Blake3Image.lex.tex (the core, the std
 id = "OPEN-B3-TRACE-SIZES"
 level = "open"
 statement = "Sizes of the serialised trace at the tree, word and bit levels for 64 B, 1 KiB and 1 MiB inputs, as reported by `cargo run --release -p blake3-check --bin trace_sizes` in docs/blake3-verification.md."
+
+[[claim]]
+id = "AUTH-LEXLEAN-STDLIB-SHA256"
+level = "some-true"
+statement = "LexLean's stdlib Sha256 computes FIPS 180-4 SHA-256; the trace's sha256 DigestSet axis rests on it."
+authority = "AUTH-LEXLEAN-STDLIB"

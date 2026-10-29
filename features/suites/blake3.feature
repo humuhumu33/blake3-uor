@@ -67,3 +67,9 @@ Feature: blake3
     Given two inputs sharing their first 1024 bytes
     When the suite exercises B3-11
     Then their first chunk's checkpoint and chunk labels are the same
+
+  @B3-12 @build
+  Scenario: vendor/lexlean-stdlib is LexLean main 6bcc8d598's stdlib byte for byte: its files are exactly lexlean.toml, src/Sha256.lex.tex and src/Text.lex.tex, the listing of their sha256 digests hashes to AUTH-LEXLEAN-STDLIB's checksum, and the trace project's lock pins that manifest.
+    Given vendor/lexlean-stdlib and the AUTH-LEXLEAN-STDLIB row of model/authorities.toml
+    When the suite exercises B3-12
+    Then the file set, the listing digest and the lock's manifest pin agree, and a one-byte change is detected

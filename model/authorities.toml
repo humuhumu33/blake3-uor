@@ -19,3 +19,12 @@ checksum = "sha256:dcb91ea8accc77e6d6e632af7cdc1a99a9f3ae78cf648da595c7d064db32f
 checksum_reason = ""
 statement = "BLAKE3's compression function, chunk and tree structure, modes and extended output are as the specification defines them, and the official vectors are its outputs."
 realized_by = ["B3-01", "B3-02"]
+
+[[authority]]
+id = "AUTH-LEXLEAN-STDLIB"
+name = "LexLean standard library, module Sha256 (FIPS 180-4 SHA-256)"
+citation = "UOR-Foundation/LexLean main, commit 6bcc8d59836506d6365dcfa4c755d068771c4f93, directory stdlib/: lexlean.toml, src/Sha256.lex.tex, src/Text.lex.tex; SPEC section 17.22, register SL-02. Vendored byte for byte under vendor/lexlean-stdlib/, the only form a LexLean source package can take (SPEC 10.5: packages are read from directories of the workspace, kind path and nothing else). LexLean's lock pins the copy as tree_sha256 c0be8a51cb95c7a1110ddc47a48b522c4c55a3522b240362e6daf9857401972a in lexlean-trace/lexlean.lock."
+checksum = "sha256:0990190fa4b971685bd463e9656fbccfb83c3f67d4f1d11100b2336fa9a072e7"
+checksum_reason = "SHA-256 of the listing `<path> <sha256 of the file>` per line, LF-terminated, in path order, over the three files; reproduce upstream with `git show 6bcc8d598:stdlib/<path> | sha256sum`."
+statement = "The LexLean stdlib's Sha256 module computes FIPS 180-4 SHA-256, validated upstream against the NIST CAVP files and the sha2 crate (SL-02)."
+realized_by = ["B3-07", "B3-12"]

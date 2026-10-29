@@ -37,6 +37,7 @@ Recorded 2026-10-29 on WSL2 Ubuntu (x86_64, AMD Ryzen AI MAX 390, 12 threads,
 | B3-09 checker rejects planted defects | 8 plants, each as its `TraceError` at its offset; another input's trace refused | same | pass |
 | B3-10 determinism | byte-identical traces, whole or split | same | pass |
 | B3-11 shared addresses | first chunk of two inputs: same 16 checkpoint labels and chunk label | same | pass |
+| B3-12 vendored stdlib = upstream | exactly upstream's 3 files; listing digest = `AUTH-LEXLEAN-STDLIB` checksum `0990190f…`; trace lock pins the manifest | `--test vendor` | pass |
 | Engine checks with PrismPM BLAKE3 | 57 checks: acceptance at 0, 64, 1025 B in 3 modes at every level; every DigestSet = PrismPM `blake3.mjs` (commit `d9672958`, sha256 `09a3fb46â€¦`) + node SHA-256; all plants | `node prism/trace-checks.mjs de0a8067â€¦ --registry â€¦ --blake3 <blake3.mjs>` (an image whose programs other than `acceptance` are byte-identical to `a77f4113â€¦`) | 57/57 PASS, 41 min |
 | Template gates without the SDK | fmt, clippy (also `--all-features`), workspace tests, `cargo deny`, model audits | each `just` slice | pass |
 | `just vv` | needs `prismpm.lock` | `just vv` | red: `prismpm.lock is required` (expected, unbound) |
@@ -53,7 +54,18 @@ run on the copy. The committed tree was never edited.
 | Rust differential, against the defective export | all 4 tests of `--test differential` fail; `the_blake3_crate_agrees_on_every_boundary_b3_02`: left `[179]`, right `[175]` | rejected |
 
 The trace checker's own planted defects are B3-09 and the engine checks above.
-Restored: the committed tree passes every gate in the status table.
+
+A second plant targets the vendored stdlib: the first round constant in
+`vendor/lexlean-stdlib/src/Sha256.lex.tex` changed from `1116352408` to
+`1116352409`, one byte.
+
+| Gate | Diagnostic | Result |
+| --- | --- | --- |
+| B3-12 (`cargo test -p blake3-check --test vendor`) | `vendor/lexlean-stdlib differs from LexLean 6bcc8d598`, left `sha256:e1bec0c9…`, right `sha256:0990190f…` | rejected |
+| `lexlean lock --check` in `lexlean-trace/` | `LLC0105: source package std is not the package the lock pins: tree_sha256: locked c0be8a51…, found 798bfe45…` | rejected |
+
+Restored (`git checkout -- vendor/…`): both pass, and the committed tree passes
+every gate in the status table.
 
 ## Trace sizes (`OPEN-B3-TRACE-SIZES`)
 
@@ -92,6 +104,12 @@ compression, through a table-driven step machine, to read its output back. The
 earlier plain model (2026-10-28, same machine, under heavier load) ran at about
 172 MiB/s at 1 MiB: tracing by construction costs about 80x.
 
+Ilya chose granularity and determinism over speed, so there is no second hash
+path. The option, if wanted: a fast hash (the earlier plain model) beside the
+traced one, held equal to it by differential tests only, with no proof that
+the two agree, so its digests would no longer be projections of a trace by
+construction.
+
 ## The Prism image (`OPEN-B3-PRISM-IMAGE`)
 
 `prism/Blake3Image.lex.tex` flattens the core, the stdlib's Sha256 (renamed
@@ -128,7 +146,8 @@ minutes); the certified Rust runs all 35 cases (B3-01).
 | Multithreading | Not expressible: LexLean is pure and has no parallel primitive. |
 | Reading files (`b3sum`) | Host effect; the model takes `Bytes`. |
 | PrismPM SDK binding | Absent: no public SDK image to bind. `just vv` stays red. |
-| `checkTrace` as Rust | Runs in the calculus engine, not as a certified rust-std package: its certificate does not compile within 11 GB ([trace.md](trace.md#where-each-part-runs)). |
+| `checkTrace` as Rust | Not certified Rust: it runs only in the calculus engine of the Prism image, because its certificate does not compile within 11 GB ([trace.md](trace.md#where-each-part-runs), [lexlean-issue-draft.md](lexlean-issue-draft.md)). |
+| The stdlib's location | A byte-for-byte path copy under `vendor/`, the only form a LexLean source package takes; held to upstream by B3-12. |
 | Kernel theorems for large inputs | Inputs past two compressions are held by tests. The bit-level adder is replayed and tested, not proved. |
 | Preservation certificates | Export certification observes `Classical.choice, Quot.sound, propext` (`export/result*.json`); the model's theorems use only `Quot.sound, propext`. |
 | Prism image tooling | `prism.mjs` and its compiler twin (LexLean `201519a1b` plus spike patches) live outside this repository. |

@@ -86,3 +86,9 @@ id = "B3-11"
 level = "build"
 suite = "blake3"
 statement = "Identical sub-computations have one address: the first chunk of two different inputs resolves to the same checkpoint and chunk labels."
+
+[[id]]
+id = "B3-12"
+level = "build"
+suite = "blake3"
+statement = "vendor/lexlean-stdlib is LexLean main 6bcc8d598's stdlib byte for byte: its files are exactly lexlean.toml, src/Sha256.lex.tex and src/Text.lex.tex, the listing of their sha256 digests hashes to AUTH-LEXLEAN-STDLIB's checksum, and the trace project's lock pins that manifest."

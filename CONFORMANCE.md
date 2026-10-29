@@ -33,6 +33,7 @@ model does not sanction.
 | `B3-09` | `build` | checkTrace rejects a flipped operation result, a flipped carry bit, a wrong permutation index, a reordered step, a wrong flag with its label kept or relabelled, a changed checkpoint with its label kept, and a forged parent link, each as the TraceError that names it; another input's trace is not this input's address. |
 | `B3-10` | `build` | The same mode, input and output length give byte-identical traces, however the input is split into updates. |
 | `B3-11` | `build` | Identical sub-computations have one address: the first chunk of two different inputs resolves to the same checkpoint and chunk labels. |
+| `B3-12` | `build` | vendor/lexlean-stdlib is LexLean main 6bcc8d598's stdlib byte for byte: its files are exactly lexlean.toml, src/Sha256.lex.tex and src/Text.lex.tex, the listing of their sha256 digests hashes to AUTH-LEXLEAN-STDLIB's checksum, and the trace project's lock pins that manifest. |
 
 ## Cited authorities
 
@@ -41,6 +42,7 @@ Never re-derived, vendored, or gated on.
 | Authority | Citation | Evidence here |
 | --- | --- | --- |
 | `AUTH-BLAKE3` | J.-P. Aumasson, S. Neves, J. O'Connor, Z. Wilcox-O'Hearn, The BLAKE3 cryptographic hash function, https://github.com/BLAKE3-team/BLAKE3-specs; test_vectors/test_vectors.json at BLAKE3 release 1.8.7, commit f3149ec5bb5449af877ba20377a11008ff499fa2, committed as oracles/blake3-1.8.7/test_vectors.json | `B3-01`, `B3-02` |
+| `AUTH-LEXLEAN-STDLIB` | UOR-Foundation/LexLean main, commit 6bcc8d59836506d6365dcfa4c755d068771c4f93, directory stdlib/: lexlean.toml, src/Sha256.lex.tex, src/Text.lex.tex; SPEC section 17.22, register SL-02. Vendored byte for byte under vendor/lexlean-stdlib/, the only form a LexLean source package can take (SPEC 10.5: packages are read from directories of the workspace, kind path and nothing else). LexLean's lock pins the copy as tree_sha256 c0be8a51cb95c7a1110ddc47a48b522c4c55a3522b240362e6daf9857401972a in lexlean-trace/lexlean.lock. | `B3-07`, `B3-12` |
 
 ## Claims that are not conformance IDs
 
@@ -50,3 +52,4 @@ Never re-derived, vendored, or gated on.
 | `OPEN-B3-THROUGHPUT` | `open` | Single-thread throughput of the exported blake3_hash package against the blake3 crate's portable and SIMD builds, as reported by `cargo run --release -p blake3-check --bin throughput` in docs/blake3-verification.md. |
 | `OPEN-B3-PRISM-IMAGE` | `open` | A local Prism image of prism/Blake3Image.lex.tex (the core, the stdlib Sha256 and the trace module in one file), built and checked with the prism-browser-runtime tooling outside this repository, as reported in docs/blake3-verification.md. |
 | `OPEN-B3-TRACE-SIZES` | `open` | Sizes of the serialised trace at the tree, word and bit levels for 64 B, 1 KiB and 1 MiB inputs, as reported by `cargo run --release -p blake3-check --bin trace_sizes` in docs/blake3-verification.md. |
+| `AUTH-LEXLEAN-STDLIB-SHA256` | `some-true` | LexLean's stdlib Sha256 computes FIPS 180-4 SHA-256; the trace's sha256 DigestSet axis rests on it. |
