@@ -52,7 +52,7 @@ Recorded 2026-10-29 on WSL2 Ubuntu (x86_64, AMD Ryzen AI MAX 390, 12 threads,
 | B3-12 vendored stdlib = upstream | exactly upstream's 3 files; listing digest = `AUTH-LEXLEAN-STDLIB` checksum `0990190f…`; trace lock pins the manifest | `--test vendor` | pass |
 | Engine checks with PrismPM BLAKE3 | 57 checks: acceptance at 0, 64, 1025 B in 3 modes at every level; every DigestSet = PrismPM `blake3.mjs` (commit `d9672958`, sha256 `09a3fb46…`) + node SHA-256; all plants | `node prism/trace-checks.mjs de0a8067… --registry … --blake3 <blake3.mjs>` (an image whose programs other than `acceptance` are byte-identical to `a77f4113…`) | 57/57 PASS, 41 min |
 | Template gates without the SDK | fmt, clippy (also `--all-features`), workspace tests, `cargo deny`, model audits | each `just` slice | pass |
-| `just vv` | needs `prismpm.lock` | `just vv` | red: `prismpm.lock is required` (expected, unbound) |
+| `just vv` | the whole template gate in the SDK candidate `9775f6b0…` | bootstrap workflow, run 40876692573 | `vv: the acceptance gate passed` (28 min) |
 
 ## Planted defect
 
@@ -217,7 +217,7 @@ minutes); the certified Rust runs all 35 cases (B3-01).
 | SIMD lanes, assembly, AVX-512 | Not expressible: LexLean 1.2 has no vector primitive. |
 | Multithreading | Not expressible: LexLean is pure and has no parallel primitive. |
 | Reading files (`b3sum`) | Host effect; the model takes `Bytes`. |
-| PrismPM SDK binding | Absent: no public SDK image to bind. `just vv` stays red. |
+| PrismPM SDK binding | A development candidate (`prismpm-sdk-candidate@sha256:9775f6b0…`, PrismPM main `2e44eed0`), not a release: no public SDK image exists yet. |
 | `checkTrace` as Rust | Not certified Rust: it runs only in the calculus engine of the Prism image, because its certificate does not compile within 11 GB ([trace.md](trace.md#where-each-part-runs), [lexlean-issue-draft.md](lexlean-issue-draft.md)). |
 | Phase 1 and analysis roots as Rust | Not certified Rust: `unmix`, `stepRoundTrip`, `prevAgrees`, `cursorMove`, `seekStep`, `diffTrace`, `diffTraceBack`, `diffReach`, `taintRound`, `fullTaintSteps`, `wordDiffusion` run only in the image's engine; their certificates ran out of 6 GB ([lexlean-issue-draft.md](lexlean-issue-draft.md)). `sliceOf` and `sliceCheck` are certified Rust. |
 | The stdlib's location | A byte-for-byte path copy under `vendor/`, the only form a LexLean source package takes; held to upstream by B3-12. |

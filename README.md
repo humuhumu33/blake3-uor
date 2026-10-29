@@ -39,8 +39,8 @@ for inputs of at most two compressions. The definitions are in
 [docs/blake3-verification.md](docs/blake3-verification.md#status). Run them with
 `cargo test -p blake3-check --test official --test differential`.
 
-Limits, kept visible: SIMD, threads, file I/O and the PrismPM SDK binding are
-not in LexLean or not here. `checkTrace` and the phase 1 and phase 2 analysis
+Limits, kept visible: SIMD, threads and file I/O are not in LexLean, and the
+PrismPM SDK binding is a development candidate, not a release. `checkTrace` and the phase 1 and phase 2 analysis
 roots run only in the Prism image's engine, not as certified Rust (`sliceOf`
 and `sliceCheck` are certified Rust). Throughput figures are measured, not
 claimed. The full list is in
@@ -54,9 +54,12 @@ matches the `blake3` and `sha2` crates and PrismPM's `blake3.mjs`, and the
 checker rejects each planted defect. The format is in [docs/trace.md](docs/trace.md);
 evidence, sizes and throughput are in [docs/blake3-verification.md](docs/blake3-verification.md).
 
-This repository is not yet bound to a PrismPM SDK image: `prismpm.lock` and
-`template.lock` are absent, so `just vv` and the bootstrap workflow stay red
-until a public SDK release exists to bind. Nothing here substitutes for it.
+The repository is bound to the PrismPM SDK development candidate
+`ghcr.io/uor-foundation/prismpm-sdk-candidate@sha256:9775f6b0…` (PrismPM main
+`2e44eed0`), because no public SDK release exists yet. `just vv` and the
+bootstrap workflow run in it and pass. The locks were rendered by this
+repository's own `propose template update` workflow. Re-bind to a release
+image when one exists.
 
 ## Layout
 
