@@ -1,5 +1,10 @@
 # blake3-uor
 
+**Try it in your browser: <https://humuhumu33.github.io/blake3-uor/>.** The page
+runs the `hash`, `keyedHash` and `deriveKey` programs of Prism image `f20bd6c0`
+in the image's own engine, checks every part by SHA-256 first, and compares
+each result with an independent BLAKE3. Its source is the `gh-pages` branch.
+
 BLAKE3 written in LexLean 1.2, trace first: every step BLAKE3 performs is a
 recorded value of the model, and every digest is a projection of that trace.
 All seven rounds, inputs of any length through the chunk tree, the 64-bit
