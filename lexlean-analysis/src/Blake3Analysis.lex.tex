@@ -1,0 +1,485 @@
+\begin{lexlean}{Blake3Analysis}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3Uor.Blake3}
+\importmodule{Blake3UorReverse.Blake3Reverse}
+\title{Natural number addition}
+\begin{semanticmodule}
+structure{
+  name: Input,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: chain, type: Bytes},
+    {name: block, type: Bytes},
+    {name: lo, type: UInt32},
+    {name: hi, type: UInt32},
+    {name: len, type: UInt32},
+    {name: fl, type: UInt32}
+  ]
+}
+
+structure{
+  name: Triple,
+  type_parameters: [],
+  parameters: [],
+  fields: [{name: left, type: UInt32}, {name: right, type: UInt32}, {name: result, type: UInt32}]
+}
+
+definition{
+  name: tripleDiff,
+  parameters: [a : Triple, p : Triple],
+  result: Bytes,
+  body: (prim append (Blake3Uor.Blake3::wordBytes (Blake3Uor.Blake3::xor (project a left) (project p left))) (prim append (Blake3Uor.Blake3::wordBytes (Blake3Uor.Blake3::xor (project a right) (project p right))) (Blake3Uor.Blake3::wordBytes (Blake3Uor.Blake3::xor (project a result) (project p result))) : Bytes) : Bytes),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: forwardTriples,
+  parameters: [x : Input],
+  result: (List Triple),
+  body: (prim list_fold (fun (acc : (List Triple)) (s : Blake3Uor.Blake3::Step) => (cons (record Triple {left := (project s left), right := (project s right), result := (project s result)}) acc)) (nil Triple) (project (Blake3Uor.Blake3::compressTrace (Blake3Uor.Blake3::keyWordsOf (project x chain)) (Blake3Uor.Blake3::loadBlock (project x block) 64 0) (project x lo) (project x hi) (project x len) (project x fl)) log) : (List Triple)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: feedTriple,
+  parameters: [
+    cv : Blake3Uor.Blake3::Cv,
+    m : Blake3Uor.Blake3::Words16,
+    s : Blake3Uor.Blake3::Words16,
+    k : Nat
+  ],
+  result: Triple,
+  body: (let row : Blake3Uor.Blake3::Row := (Blake3UorReverse.Blake3Reverse::rowFor k); (let left : UInt32 := (Blake3Uor.Blake3::getWord s (project row dest)); (let right : UInt32 := (Blake3UorReverse.Blake3Reverse::operand cv m s k); (record Triple {left := left, right := right, result := (Blake3Uor.Blake3::perform (project row kind) left right)})))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: backStep,
+  parameters: [
+    cv : Blake3Uor.Blake3::Cv,
+    m : Blake3Uor.Blake3::Words16,
+    walk : (Nat * (Blake3Uor.Blake3::Words16 * (List Triple)))
+  ],
+  result: (Nat * (Blake3Uor.Blake3::Words16 * (List Triple))),
+  body: (let k : Nat := (prim subtract 783 (first walk) : Nat); (let s : Blake3Uor.Blake3::Words16 := (first (second walk)); (let row : Blake3Uor.Blake3::Row := (Blake3UorReverse.Blake3Reverse::rowFor k); (let result : UInt32 := (Blake3Uor.Blake3::getWord s (project row dest)); (let right : UInt32 := (Blake3UorReverse.Blake3Reverse::operand cv m s k); (let left : UInt32 := (Blake3UorReverse.Blake3Reverse::undo (project row kind) result right); (((first walk) + 1), ((Blake3Uor.Blake3::setWord s (project row dest) left), (cons (record Triple {left := left, right := right, result := result}) (second (second walk))))))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: backwardTriples,
+  parameters: [x : Input],
+  result: (List Triple),
+  body: (let cv : Blake3Uor.Blake3::Cv := (Blake3Uor.Blake3::keyWordsOf (project x chain)); (let m : Blake3Uor.Blake3::Words16 := (Blake3Uor.Blake3::loadBlock (project x block) 64 0); (let s : Blake3Uor.Blake3::Words16 := (Blake3UorReverse.Blake3Reverse::unfeed (Blake3Uor.Blake3::compress cv m (project x lo) (project x hi) (project x len) (project x fl)) cv); (let feed : (List Triple) := (second (prim iterate (fun [cv, m, s] (walk : (Nat * (List Triple))) => (((first walk) + 1), (cons (feedTriple cv m s (prim subtract 799 (first walk) : Nat)) (second walk)))) 16 (0, (nil Triple)) : (Nat * (List Triple)))); (second (second (prim iterate (fun [cv, m] (walk : (Nat * (Blake3Uor.Blake3::Words16 * (List Triple)))) => (backStep cv m walk)) 784 (0, (s, feed)) : (Nat * (Blake3Uor.Blake3::Words16 * (List Triple)))))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: tripleDiffs,
+  parameters: [a : (List Triple), p : (List Triple)],
+  result: Bytes,
+  body: (Blake3Uor.Blake3::concatAll (prim list_fold (fun (acc : (List Bytes)) (x : Bytes) => (cons x acc)) (nil Bytes) (second (prim list_fold (fun (acc : ((List Triple) * (List Bytes))) (x : Triple) => (match (first acc)
+    | List.cons y rest => (rest, (cons (tripleDiff x y) (second acc)))
+    | List.nil => ((nil Triple), (second acc)))) (p, (nil Bytes)) a : ((List Triple) * (List Bytes)))) : (List Bytes))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: diffTrace,
+  parameters: [a : Input, p : Input],
+  result: Bytes,
+  body: (tripleDiffs (forwardTriples a) (forwardTriples p)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: diffTraceBack,
+  parameters: [a : Input, p : Input],
+  result: Bytes,
+  body: (tripleDiffs (backwardTriples a) (backwardTriples p)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+structure{
+  name: Reach,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: n0, type: Nat},
+    {name: n1, type: Nat},
+    {name: n2, type: Nat},
+    {name: n3, type: Nat},
+    {name: n4, type: Nat},
+    {name: n5, type: Nat},
+    {name: n6, type: Nat},
+    {name: n7, type: Nat},
+    {name: n8, type: Nat},
+    {name: n9, type: Nat},
+    {name: n10, type: Nat},
+    {name: n11, type: Nat},
+    {name: n12, type: Nat},
+    {name: n13, type: Nat},
+    {name: n14, type: Nat},
+    {name: n15, type: Nat}
+  ]
+}
+
+definition{
+  name: reachAt,
+  parameters: [r : Reach, i : Nat],
+  result: Nat,
+  body: (if (i <? 8) then (if (i <? 4) then (if (i <? 2) then (if (i <? 1) then (project r n0) else (project r n1)) else (if (i <? 3) then (project r n2) else (project r n3))) else (if (i <? 6) then (if (i <? 5) then (project r n4) else (project r n5)) else (if (i <? 7) then (project r n6) else (project r n7)))) else (if (i <? 12) then (if (i <? 10) then (if (i <? 9) then (project r n8) else (project r n9)) else (if (i <? 11) then (project r n10) else (project r n11))) else (if (i <? 14) then (if (i <? 13) then (project r n12) else (project r n13)) else (if (i <? 15) then (project r n14) else (project r n15))))),
+  executable: true
+}
+
+definition{
+  name: reachSet,
+  parameters: [r : Reach, i : Nat, value : Nat],
+  result: Reach,
+  body: (if (i <? 8) then (if (i <? 4) then (if (i <? 2) then (if (i <? 1) then (record Reach {n0 := value, n1 := (project r n1), n2 := (project r n2), n3 := (project r n3), n4 := (project r n4), n5 := (project r n5), n6 := (project r n6), n7 := (project r n7), n8 := (project r n8), n9 := (project r n9), n10 := (project r n10), n11 := (project r n11), n12 := (project r n12), n13 := (project r n13), n14 := (project r n14), n15 := (project r n15)}) else (record Reach {n0 := (project r n0), n1 := value, n2 := (project r n2), n3 := (project r n3), n4 := (project r n4), n5 := (project r n5), n6 := (project r n6), n7 := (project r n7), n8 := (project r n8), n9 := (project r n9), n10 := (project r n10), n11 := (project r n11), n12 := (project r n12), n13 := (project r n13), n14 := (project r n14), n15 := (project r n15)})) else (if (i <? 3) then (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := value, n3 := (project r n3), n4 := (project r n4), n5 := (project r n5), n6 := (project r n6), n7 := (project r n7), n8 := (project r n8), n9 := (project r n9), n10 := (project r n10), n11 := (project r n11), n12 := (project r n12), n13 := (project r n13), n14 := (project r n14), n15 := (project r n15)}) else (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := (project r n2), n3 := value, n4 := (project r n4), n5 := (project r n5), n6 := (project r n6), n7 := (project r n7), n8 := (project r n8), n9 := (project r n9), n10 := (project r n10), n11 := (project r n11), n12 := (project r n12), n13 := (project r n13), n14 := (project r n14), n15 := (project r n15)}))) else (if (i <? 6) then (if (i <? 5) then (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := (project r n2), n3 := (project r n3), n4 := value, n5 := (project r n5), n6 := (project r n6), n7 := (project r n7), n8 := (project r n8), n9 := (project r n9), n10 := (project r n10), n11 := (project r n11), n12 := (project r n12), n13 := (project r n13), n14 := (project r n14), n15 := (project r n15)}) else (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := (project r n2), n3 := (project r n3), n4 := (project r n4), n5 := value, n6 := (project r n6), n7 := (project r n7), n8 := (project r n8), n9 := (project r n9), n10 := (project r n10), n11 := (project r n11), n12 := (project r n12), n13 := (project r n13), n14 := (project r n14), n15 := (project r n15)})) else (if (i <? 7) then (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := (project r n2), n3 := (project r n3), n4 := (project r n4), n5 := (project r n5), n6 := value, n7 := (project r n7), n8 := (project r n8), n9 := (project r n9), n10 := (project r n10), n11 := (project r n11), n12 := (project r n12), n13 := (project r n13), n14 := (project r n14), n15 := (project r n15)}) else (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := (project r n2), n3 := (project r n3), n4 := (project r n4), n5 := (project r n5), n6 := (project r n6), n7 := value, n8 := (project r n8), n9 := (project r n9), n10 := (project r n10), n11 := (project r n11), n12 := (project r n12), n13 := (project r n13), n14 := (project r n14), n15 := (project r n15)})))) else (if (i <? 12) then (if (i <? 10) then (if (i <? 9) then (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := (project r n2), n3 := (project r n3), n4 := (project r n4), n5 := (project r n5), n6 := (project r n6), n7 := (project r n7), n8 := value, n9 := (project r n9), n10 := (project r n10), n11 := (project r n11), n12 := (project r n12), n13 := (project r n13), n14 := (project r n14), n15 := (project r n15)}) else (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := (project r n2), n3 := (project r n3), n4 := (project r n4), n5 := (project r n5), n6 := (project r n6), n7 := (project r n7), n8 := (project r n8), n9 := value, n10 := (project r n10), n11 := (project r n11), n12 := (project r n12), n13 := (project r n13), n14 := (project r n14), n15 := (project r n15)})) else (if (i <? 11) then (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := (project r n2), n3 := (project r n3), n4 := (project r n4), n5 := (project r n5), n6 := (project r n6), n7 := (project r n7), n8 := (project r n8), n9 := (project r n9), n10 := value, n11 := (project r n11), n12 := (project r n12), n13 := (project r n13), n14 := (project r n14), n15 := (project r n15)}) else (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := (project r n2), n3 := (project r n3), n4 := (project r n4), n5 := (project r n5), n6 := (project r n6), n7 := (project r n7), n8 := (project r n8), n9 := (project r n9), n10 := (project r n10), n11 := value, n12 := (project r n12), n13 := (project r n13), n14 := (project r n14), n15 := (project r n15)}))) else (if (i <? 14) then (if (i <? 13) then (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := (project r n2), n3 := (project r n3), n4 := (project r n4), n5 := (project r n5), n6 := (project r n6), n7 := (project r n7), n8 := (project r n8), n9 := (project r n9), n10 := (project r n10), n11 := (project r n11), n12 := value, n13 := (project r n13), n14 := (project r n14), n15 := (project r n15)}) else (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := (project r n2), n3 := (project r n3), n4 := (project r n4), n5 := (project r n5), n6 := (project r n6), n7 := (project r n7), n8 := (project r n8), n9 := (project r n9), n10 := (project r n10), n11 := (project r n11), n12 := (project r n12), n13 := value, n14 := (project r n14), n15 := (project r n15)})) else (if (i <? 15) then (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := (project r n2), n3 := (project r n3), n4 := (project r n4), n5 := (project r n5), n6 := (project r n6), n7 := (project r n7), n8 := (project r n8), n9 := (project r n9), n10 := (project r n10), n11 := (project r n11), n12 := (project r n12), n13 := (project r n13), n14 := value, n15 := (project r n15)}) else (record Reach {n0 := (project r n0), n1 := (project r n1), n2 := (project r n2), n3 := (project r n3), n4 := (project r n4), n5 := (project r n5), n6 := (project r n6), n7 := (project r n7), n8 := (project r n8), n9 := (project r n9), n10 := (project r n10), n11 := (project r n11), n12 := (project r n12), n13 := (project r n13), n14 := (project r n14), n15 := value}))))),
+  executable: true
+}
+
+definition{
+  name: reachList,
+  parameters: [r : Reach],
+  result: (List Nat),
+  body: (cons (project r n0) (cons (project r n1) (cons (project r n2) (cons (project r n3) (cons (project r n4) (cons (project r n5) (cons (project r n6) (cons (project r n7) (cons (project r n8) (cons (project r n9) (cons (project r n10) (cons (project r n11) (cons (project r n12) (cons (project r n13) (cons (project r n14) (cons (project r n15) (nil Nat))))))))))))))))),
+  executable: true
+}
+
+definition{
+  name: reachStep,
+  parameters: [walk : (Nat * ((List Triple) * Reach)), x : Triple],
+  result: (Nat * ((List Triple) * Reach)),
+  body: (let k : Nat := (first walk); (let dest : Nat := (project (Blake3UorReverse.Blake3Reverse::rowFor k) dest); (let reach : Reach := (second (second walk)); (match (first (second walk))
+    | List.cons y rest => (((first walk) + 1), (rest, (if ((k <? 784) && (((reachAt reach dest) =? 800) && (if (prim equal (project x result) (project y result) : Bool) then false else true))) then (reachSet reach dest k) else reach)))
+    | List.nil => (((first walk) + 1), ((nil Triple), reach)))))),
+  executable: true
+}
+
+definition{
+  name: diffReach,
+  parameters: [a : Input, p : Input],
+  result: (List Nat),
+  body: (let sa : Blake3Uor.Blake3::Words16 := (Blake3Uor.Blake3::initialState (Blake3Uor.Blake3::keyWordsOf (project a chain)) (project a lo) (project a hi) (project a len) (project a fl)); (let sp : Blake3Uor.Blake3::Words16 := (Blake3Uor.Blake3::initialState (Blake3Uor.Blake3::keyWordsOf (project p chain)) (project p lo) (project p hi) (project p len) (project p fl)); (let begin : Reach := (record Reach {n0 := (if (prim equal (project sa v0) (project sp v0) : Bool) then 800 else 0), n1 := (if (prim equal (project sa v1) (project sp v1) : Bool) then 800 else 0), n2 := (if (prim equal (project sa v2) (project sp v2) : Bool) then 800 else 0), n3 := (if (prim equal (project sa v3) (project sp v3) : Bool) then 800 else 0), n4 := (if (prim equal (project sa v4) (project sp v4) : Bool) then 800 else 0), n5 := (if (prim equal (project sa v5) (project sp v5) : Bool) then 800 else 0), n6 := (if (prim equal (project sa v6) (project sp v6) : Bool) then 800 else 0), n7 := (if (prim equal (project sa v7) (project sp v7) : Bool) then 800 else 0), n8 := (if (prim equal (project sa v8) (project sp v8) : Bool) then 800 else 0), n9 := (if (prim equal (project sa v9) (project sp v9) : Bool) then 800 else 0), n10 := (if (prim equal (project sa v10) (project sp v10) : Bool) then 800 else 0), n11 := (if (prim equal (project sa v11) (project sp v11) : Bool) then 800 else 0), n12 := (if (prim equal (project sa v12) (project sp v12) : Bool) then 800 else 0), n13 := (if (prim equal (project sa v13) (project sp v13) : Bool) then 800 else 0), n14 := (if (prim equal (project sa v14) (project sp v14) : Bool) then 800 else 0), n15 := (if (prim equal (project sa v15) (project sp v15) : Bool) then 800 else 0)}); (reachList (second (second (prim list_fold (fun (walk : (Nat * ((List Triple) * Reach))) (x : Triple) => (reachStep walk x)) (0, ((forwardTriples p), begin)) (forwardTriples a) : (Nat * ((List Triple) * Reach))))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+structure{
+  name: Bits,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: msg, type: Blake3Uor.Blake3::Words16},
+    {name: init, type: Blake3Uor.Blake3::Words16}
+  ]
+}
+
+structure{
+  name: Taint16,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: t0, type: (List Bits)},
+    {name: t1, type: (List Bits)},
+    {name: t2, type: (List Bits)},
+    {name: t3, type: (List Bits)},
+    {name: t4, type: (List Bits)},
+    {name: t5, type: (List Bits)},
+    {name: t6, type: (List Bits)},
+    {name: t7, type: (List Bits)},
+    {name: t8, type: (List Bits)},
+    {name: t9, type: (List Bits)},
+    {name: t10, type: (List Bits)},
+    {name: t11, type: (List Bits)},
+    {name: t12, type: (List Bits)},
+    {name: t13, type: (List Bits)},
+    {name: t14, type: (List Bits)},
+    {name: t15, type: (List Bits)}
+  ]
+}
+
+structure{
+  name: TaintState,
+  type_parameters: [],
+  parameters: [],
+  fields: [{name: state, type: Taint16}, {name: out, type: Taint16}]
+}
+
+definition{
+  name: or16,
+  parameters: [a : Blake3Uor.Blake3::Words16, p : Blake3Uor.Blake3::Words16],
+  result: Blake3Uor.Blake3::Words16,
+  body: (record Blake3Uor.Blake3::Words16 {v0 := (prim bit_or (project a v0) (project p v0) : UInt32), v1 := (prim bit_or (project a v1) (project p v1) : UInt32), v2 := (prim bit_or (project a v2) (project p v2) : UInt32), v3 := (prim bit_or (project a v3) (project p v3) : UInt32), v4 := (prim bit_or (project a v4) (project p v4) : UInt32), v5 := (prim bit_or (project a v5) (project p v5) : UInt32), v6 := (prim bit_or (project a v6) (project p v6) : UInt32), v7 := (prim bit_or (project a v7) (project p v7) : UInt32), v8 := (prim bit_or (project a v8) (project p v8) : UInt32), v9 := (prim bit_or (project a v9) (project p v9) : UInt32), v10 := (prim bit_or (project a v10) (project p v10) : UInt32), v11 := (prim bit_or (project a v11) (project p v11) : UInt32), v12 := (prim bit_or (project a v12) (project p v12) : UInt32), v13 := (prim bit_or (project a v13) (project p v13) : UInt32), v14 := (prim bit_or (project a v14) (project p v14) : UInt32), v15 := (prim bit_or (project a v15) (project p v15) : UInt32)}),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: bitsUnion,
+  parameters: [a : Bits, p : Bits],
+  result: Bits,
+  body: (record Bits {msg := (or16 (project a msg) (project p msg)), init := (or16 (project a init) (project p init))}),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: noBits,
+  parameters: [],
+  result: Bits,
+  body: (record Bits {msg := (record Blake3Uor.Blake3::Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)}), init := (record Blake3Uor.Blake3::Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)})}),
+  executable: true
+}
+
+definition{
+  name: allBits,
+  parameters: [],
+  result: Bits,
+  body: (record Bits {msg := (record Blake3Uor.Blake3::Words16 {v0 := (4294967295 : UInt32), v1 := (4294967295 : UInt32), v2 := (4294967295 : UInt32), v3 := (4294967295 : UInt32), v4 := (4294967295 : UInt32), v5 := (4294967295 : UInt32), v6 := (4294967295 : UInt32), v7 := (4294967295 : UInt32), v8 := (4294967295 : UInt32), v9 := (4294967295 : UInt32), v10 := (4294967295 : UInt32), v11 := (4294967295 : UInt32), v12 := (4294967295 : UInt32), v13 := (4294967295 : UInt32), v14 := (4294967295 : UInt32), v15 := (4294967295 : UInt32)}), init := (record Blake3Uor.Blake3::Words16 {v0 := (4294967295 : UInt32), v1 := (4294967295 : UInt32), v2 := (4294967295 : UInt32), v3 := (4294967295 : UInt32), v4 := (4294967295 : UInt32), v5 := (4294967295 : UInt32), v6 := (4294967295 : UInt32), v7 := (4294967295 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (4294967295 : UInt32), v13 := (4294967295 : UInt32), v14 := (4294967295 : UInt32), v15 := (4294967295 : UInt32)})}),
+  executable: true
+}
+
+definition{
+  name: bitsSame,
+  parameters: [a : Bits, p : Bits],
+  result: Bool,
+  body: ((prim equal (project (project a msg) v0) (project (project p msg) v0) : Bool) && ((prim equal (project (project a msg) v1) (project (project p msg) v1) : Bool) && ((prim equal (project (project a msg) v2) (project (project p msg) v2) : Bool) && ((prim equal (project (project a msg) v3) (project (project p msg) v3) : Bool) && ((prim equal (project (project a msg) v4) (project (project p msg) v4) : Bool) && ((prim equal (project (project a msg) v5) (project (project p msg) v5) : Bool) && ((prim equal (project (project a msg) v6) (project (project p msg) v6) : Bool) && ((prim equal (project (project a msg) v7) (project (project p msg) v7) : Bool) && ((prim equal (project (project a msg) v8) (project (project p msg) v8) : Bool) && ((prim equal (project (project a msg) v9) (project (project p msg) v9) : Bool) && ((prim equal (project (project a msg) v10) (project (project p msg) v10) : Bool) && ((prim equal (project (project a msg) v11) (project (project p msg) v11) : Bool) && ((prim equal (project (project a msg) v12) (project (project p msg) v12) : Bool) && ((prim equal (project (project a msg) v13) (project (project p msg) v13) : Bool) && ((prim equal (project (project a msg) v14) (project (project p msg) v14) : Bool) && ((prim equal (project (project a msg) v15) (project (project p msg) v15) : Bool) && ((prim equal (project (project a init) v0) (project (project p init) v0) : Bool) && ((prim equal (project (project a init) v1) (project (project p init) v1) : Bool) && ((prim equal (project (project a init) v2) (project (project p init) v2) : Bool) && ((prim equal (project (project a init) v3) (project (project p init) v3) : Bool) && ((prim equal (project (project a init) v4) (project (project p init) v4) : Bool) && ((prim equal (project (project a init) v5) (project (project p init) v5) : Bool) && ((prim equal (project (project a init) v6) (project (project p init) v6) : Bool) && ((prim equal (project (project a init) v7) (project (project p init) v7) : Bool) && ((prim equal (project (project a init) v8) (project (project p init) v8) : Bool) && ((prim equal (project (project a init) v9) (project (project p init) v9) : Bool) && ((prim equal (project (project a init) v10) (project (project p init) v10) : Bool) && ((prim equal (project (project a init) v11) (project (project p init) v11) : Bool) && ((prim equal (project (project a init) v12) (project (project p init) v12) : Bool) && ((prim equal (project (project a init) v13) (project (project p init) v13) : Bool) && ((prim equal (project (project a init) v14) (project (project p init) v14) : Bool) && (prim equal (project (project a init) v15) (project (project p init) v15) : Bool)))))))))))))))))))))))))))))))),
+  executable: true
+}
+
+definition{
+  name: oneBit,
+  parameters: [inMessage : Bool, w : Nat, i : Nat],
+  result: Bits,
+  body: (let single : Blake3Uor.Blake3::Words16 := (Blake3Uor.Blake3::setWord (record Blake3Uor.Blake3::Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)}) w (Blake3Uor.Blake3::shiftLeft (1 : UInt32) (Blake3Uor.Blake3::wordOfNat i 5))); (if inMessage then (record Bits {msg := single, init := (record Blake3Uor.Blake3::Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)})}) else (record Bits {msg := (record Blake3Uor.Blake3::Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)}), init := single}))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: inputWord,
+  parameters: [inMessage : Bool, w : Nat],
+  result: (List Bits),
+  body: (second (prim iterate (fun [inMessage, w] (walk : (Nat * (List Bits))) => (((first walk) + 1), (cons (oneBit inMessage w (prim subtract 31 (first walk) : Nat)) (second walk)))) 32 (0, (nil Bits)) : (Nat * (List Bits)))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: blankWord,
+  parameters: [],
+  result: (List Bits),
+  body: (second (prim iterate (fun (walk : (Nat * (List Bits))) => (((first walk) + 1), (cons (noBits) (second walk)))) 32 (0, (nil Bits)) : (Nat * (List Bits)))),
+  executable: true
+}
+
+definition{
+  name: taintXor,
+  parameters: [a : (List Bits), p : (List Bits)],
+  result: (List Bits),
+  body: (prim list_fold (fun (acc : (List Bits)) (x : Bits) => (cons x acc)) (nil Bits) (second (prim list_fold (fun (acc : ((List Bits) * (List Bits))) (x : Bits) => (match (first acc)
+    | List.cons y rest => (rest, (cons (bitsUnion x y) (second acc)))
+    | List.nil => ((nil Bits), (second acc)))) (p, (nil Bits)) a : ((List Bits) * (List Bits)))) : (List Bits)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: taintAdd,
+  parameters: [a : (List Bits), p : (List Bits)],
+  result: (List Bits),
+  body: (prim list_fold (fun (acc : (List Bits)) (x : Bits) => (cons x acc)) (nil Bits) (second (second (prim list_fold (fun (acc : ((List Bits) * (Bits * (List Bits)))) (x : Bits) => (match (first acc)
+    | List.cons y rest => (let carried : Bits := (bitsUnion (first (second acc)) (bitsUnion x y)); (rest, (carried, (cons carried (second (second acc))))))
+    | List.nil => ((nil Bits), (second acc)))) (p, ((noBits), (nil Bits))) a : ((List Bits) * (Bits * (List Bits)))))) : (List Bits)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: taintRor,
+  parameters: [a : (List Bits), n : Nat],
+  result: (List Bits),
+  body: (second (prim iterate (fun [a, n] (walk : (Nat * (List Bits))) => (((first walk) + 1), (cons (match (prim index a (prim remainder ((prim subtract 31 (first walk) : Nat) + n) 32 0 : Nat) : (Option Bits))
+    | Option.some x => x
+    | Option.none => (noBits)) (second walk)))) 32 (0, (nil Bits)) : (Nat * (List Bits)))),
+  executable: true
+}
+
+definition{
+  name: amountNat,
+  parameters: [source : Nat],
+  result: Nat,
+  body: (if (source <? 12) then (if (source <? 9) then (if (source <? 8) then 7 else 8) else (if (source <? 10) then 9 else (if (source <? 11) then 10 else 11))) else (if (source <? 14) then (if (source <? 13) then 12 else 13) else (if (source <? 15) then 14 else (if (source <? 16) then 15 else 16)))),
+  executable: true
+}
+
+definition{
+  name: taintAt,
+  parameters: [t : Taint16, i : Nat],
+  result: (List Bits),
+  body: (if (i <? 8) then (if (i <? 4) then (if (i <? 2) then (if (i <? 1) then (project t t0) else (project t t1)) else (if (i <? 3) then (project t t2) else (project t t3))) else (if (i <? 6) then (if (i <? 5) then (project t t4) else (project t t5)) else (if (i <? 7) then (project t t6) else (project t t7)))) else (if (i <? 12) then (if (i <? 10) then (if (i <? 9) then (project t t8) else (project t t9)) else (if (i <? 11) then (project t t10) else (project t t11))) else (if (i <? 14) then (if (i <? 13) then (project t t12) else (project t t13)) else (if (i <? 15) then (project t t14) else (project t t15))))),
+  executable: true
+}
+
+definition{
+  name: taintSet,
+  parameters: [t : Taint16, i : Nat, value : (List Bits)],
+  result: Taint16,
+  body: (if (i <? 8) then (if (i <? 4) then (if (i <? 2) then (if (i <? 1) then (record Taint16 {t0 := value, t1 := (project t t1), t2 := (project t t2), t3 := (project t t3), t4 := (project t t4), t5 := (project t t5), t6 := (project t t6), t7 := (project t t7), t8 := (project t t8), t9 := (project t t9), t10 := (project t t10), t11 := (project t t11), t12 := (project t t12), t13 := (project t t13), t14 := (project t t14), t15 := (project t t15)}) else (record Taint16 {t0 := (project t t0), t1 := value, t2 := (project t t2), t3 := (project t t3), t4 := (project t t4), t5 := (project t t5), t6 := (project t t6), t7 := (project t t7), t8 := (project t t8), t9 := (project t t9), t10 := (project t t10), t11 := (project t t11), t12 := (project t t12), t13 := (project t t13), t14 := (project t t14), t15 := (project t t15)})) else (if (i <? 3) then (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := value, t3 := (project t t3), t4 := (project t t4), t5 := (project t t5), t6 := (project t t6), t7 := (project t t7), t8 := (project t t8), t9 := (project t t9), t10 := (project t t10), t11 := (project t t11), t12 := (project t t12), t13 := (project t t13), t14 := (project t t14), t15 := (project t t15)}) else (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := (project t t2), t3 := value, t4 := (project t t4), t5 := (project t t5), t6 := (project t t6), t7 := (project t t7), t8 := (project t t8), t9 := (project t t9), t10 := (project t t10), t11 := (project t t11), t12 := (project t t12), t13 := (project t t13), t14 := (project t t14), t15 := (project t t15)}))) else (if (i <? 6) then (if (i <? 5) then (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := (project t t2), t3 := (project t t3), t4 := value, t5 := (project t t5), t6 := (project t t6), t7 := (project t t7), t8 := (project t t8), t9 := (project t t9), t10 := (project t t10), t11 := (project t t11), t12 := (project t t12), t13 := (project t t13), t14 := (project t t14), t15 := (project t t15)}) else (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := (project t t2), t3 := (project t t3), t4 := (project t t4), t5 := value, t6 := (project t t6), t7 := (project t t7), t8 := (project t t8), t9 := (project t t9), t10 := (project t t10), t11 := (project t t11), t12 := (project t t12), t13 := (project t t13), t14 := (project t t14), t15 := (project t t15)})) else (if (i <? 7) then (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := (project t t2), t3 := (project t t3), t4 := (project t t4), t5 := (project t t5), t6 := value, t7 := (project t t7), t8 := (project t t8), t9 := (project t t9), t10 := (project t t10), t11 := (project t t11), t12 := (project t t12), t13 := (project t t13), t14 := (project t t14), t15 := (project t t15)}) else (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := (project t t2), t3 := (project t t3), t4 := (project t t4), t5 := (project t t5), t6 := (project t t6), t7 := value, t8 := (project t t8), t9 := (project t t9), t10 := (project t t10), t11 := (project t t11), t12 := (project t t12), t13 := (project t t13), t14 := (project t t14), t15 := (project t t15)})))) else (if (i <? 12) then (if (i <? 10) then (if (i <? 9) then (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := (project t t2), t3 := (project t t3), t4 := (project t t4), t5 := (project t t5), t6 := (project t t6), t7 := (project t t7), t8 := value, t9 := (project t t9), t10 := (project t t10), t11 := (project t t11), t12 := (project t t12), t13 := (project t t13), t14 := (project t t14), t15 := (project t t15)}) else (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := (project t t2), t3 := (project t t3), t4 := (project t t4), t5 := (project t t5), t6 := (project t t6), t7 := (project t t7), t8 := (project t t8), t9 := value, t10 := (project t t10), t11 := (project t t11), t12 := (project t t12), t13 := (project t t13), t14 := (project t t14), t15 := (project t t15)})) else (if (i <? 11) then (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := (project t t2), t3 := (project t t3), t4 := (project t t4), t5 := (project t t5), t6 := (project t t6), t7 := (project t t7), t8 := (project t t8), t9 := (project t t9), t10 := value, t11 := (project t t11), t12 := (project t t12), t13 := (project t t13), t14 := (project t t14), t15 := (project t t15)}) else (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := (project t t2), t3 := (project t t3), t4 := (project t t4), t5 := (project t t5), t6 := (project t t6), t7 := (project t t7), t8 := (project t t8), t9 := (project t t9), t10 := (project t t10), t11 := value, t12 := (project t t12), t13 := (project t t13), t14 := (project t t14), t15 := (project t t15)}))) else (if (i <? 14) then (if (i <? 13) then (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := (project t t2), t3 := (project t t3), t4 := (project t t4), t5 := (project t t5), t6 := (project t t6), t7 := (project t t7), t8 := (project t t8), t9 := (project t t9), t10 := (project t t10), t11 := (project t t11), t12 := value, t13 := (project t t13), t14 := (project t t14), t15 := (project t t15)}) else (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := (project t t2), t3 := (project t t3), t4 := (project t t4), t5 := (project t t5), t6 := (project t t6), t7 := (project t t7), t8 := (project t t8), t9 := (project t t9), t10 := (project t t10), t11 := (project t t11), t12 := (project t t12), t13 := value, t14 := (project t t14), t15 := (project t t15)})) else (if (i <? 15) then (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := (project t t2), t3 := (project t t3), t4 := (project t t4), t5 := (project t t5), t6 := (project t t6), t7 := (project t t7), t8 := (project t t8), t9 := (project t t9), t10 := (project t t10), t11 := (project t t11), t12 := (project t t12), t13 := (project t t13), t14 := value, t15 := (project t t15)}) else (record Taint16 {t0 := (project t t0), t1 := (project t t1), t2 := (project t t2), t3 := (project t t3), t4 := (project t t4), t5 := (project t t5), t6 := (project t t6), t7 := (project t t7), t8 := (project t t8), t9 := (project t t9), t10 := (project t t10), t11 := (project t t11), t12 := (project t t12), t13 := (project t t13), t14 := (project t t14), t15 := value}))))),
+  executable: true
+}
+
+definition{
+  name: taintResult,
+  parameters: [ts : TaintState, k : Nat],
+  result: (List Bits),
+  body: (let row : Blake3Uor.Blake3::Row := (Blake3UorReverse.Blake3Reverse::rowFor k); (let st : Taint16 := (project ts state); (let left : (List Bits) := (taintAt st (project row dest)); (match (project row kind)
+    | Blake3Uor.Blake3::Op.opAdd => (taintAdd left (taintAt st (project row source)))
+    | Blake3Uor.Blake3::Op.opAddMsg => (taintAdd left (inputWord true (Blake3Uor.Blake3::slotWord (Blake3UorReverse.Blake3Reverse::roundOf k) (project row source))))
+    | Blake3Uor.Blake3::Op.opXor => (taintXor left (taintAt st (project row source)))
+    | Blake3Uor.Blake3::Op.opRor => (taintRor left (amountNat (project row source)))
+    | Blake3Uor.Blake3::Op.opXorCv => (taintXor left (inputWord false (project row source))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: taintApply,
+  parameters: [ts : TaintState, k : Nat, result : (List Bits)],
+  result: TaintState,
+  body: (let dest : Nat := (project (Blake3UorReverse.Blake3Reverse::rowFor k) dest); (if ((Blake3UorReverse.Blake3Reverse::roundOf k) =? 7) then (record TaintState {state := (project ts state), out := (taintSet (project ts out) dest result)}) else (record TaintState {state := (taintSet (project ts state) dest result), out := (project ts out)}))),
+  executable: true
+}
+
+definition{
+  name: taintStart,
+  parameters: [],
+  result: TaintState,
+  body: (let blank : (List Bits) := (blankWord); (record TaintState {state := (record Taint16 {t0 := (inputWord false 0), t1 := (inputWord false 1), t2 := (inputWord false 2), t3 := (inputWord false 3), t4 := (inputWord false 4), t5 := (inputWord false 5), t6 := (inputWord false 6), t7 := (inputWord false 7), t8 := blank, t9 := blank, t10 := blank, t11 := blank, t12 := (inputWord false 12), t13 := (inputWord false 13), t14 := (inputWord false 14), t15 := (inputWord false 15)}), out := (record Taint16 {t0 := blank, t1 := blank, t2 := blank, t3 := blank, t4 := blank, t5 := blank, t6 := blank, t7 := blank, t8 := blank, t9 := blank, t10 := blank, t11 := blank, t12 := blank, t13 := blank, t14 := blank, t15 := blank})})),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: bitsBytes,
+  parameters: [x : Bits],
+  result: Bytes,
+  body: (prim append (Blake3Uor.Blake3::blockBytes (project x msg)) (Blake3Uor.Blake3::blockBytes (project x init)) : Bytes),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: taintBytes,
+  parameters: [t : (List Bits)],
+  result: Bytes,
+  body: (Blake3Uor.Blake3::concatAll (prim list_fold (fun (acc : (List Bytes)) (x : Bytes) => (cons x acc)) (nil Bytes) (prim list_fold (fun (acc : (List Bytes)) (x : Bits) => (cons (bitsBytes x) acc)) (nil Bytes) t : (List Bytes)) : (List Bytes))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: taintWalk,
+  parameters: [begin : Nat, walk : (Nat * (TaintState * (List Bytes)))],
+  result: (Nat * (TaintState * (List Bytes))),
+  body: (let k : Nat := (first walk); (let ts : TaintState := (first (second walk)); (let result : (List Bits) := (taintResult ts k); (((first walk) + 1), ((taintApply ts k result), (if (begin <=? k) then (cons (taintBytes result) (second (second walk))) else (second (second walk)))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: taintRound,
+  parameters: [r : Nat],
+  result: Bytes,
+  body: (let begin : Nat := (if (r <? 7) then (prim multiply r 112 : Nat) else 784); (let finish : Nat := (if (r <? 7) then (prim multiply (r + 1) 112 : Nat) else 800); (Blake3Uor.Blake3::concatAll (prim list_fold (fun (acc : (List Bytes)) (x : Bytes) => (cons x acc)) (nil Bytes) (second (second (prim iterate (fun [begin] (walk : (Nat * (TaintState * (List Bytes)))) => (taintWalk begin walk)) finish (0, ((taintStart), (nil Bytes))) : (Nat * (TaintState * (List Bytes)))))) : (List Bytes))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: wordFull,
+  parameters: [t : (List Bits)],
+  result: Bool,
+  body: (prim list_fold (fun (ok : Bool) (x : Bits) => (ok && (bitsSame x (allBits)))) true t : Bool),
+  executable: true
+}
+
+definition{
+  name: fullWalk,
+  parameters: [walk : (Nat * (TaintState * Reach))],
+  result: (Nat * (TaintState * Reach)),
+  body: (let k : Nat := (first walk); (let ts : TaintState := (first (second walk)); (let reach : Reach := (second (second walk)); (let result : (List Bits) := (taintResult ts k); (let dest : Nat := (project (Blake3UorReverse.Blake3Reverse::rowFor k) dest); (((first walk) + 1), ((taintApply ts k result), (if (((reachAt reach dest) =? 800) && (wordFull result)) then (reachSet reach dest k) else reach)))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: fullTaintSteps,
+  parameters: [],
+  result: (List Nat),
+  body: (reachList (second (second (prim iterate (fun (walk : (Nat * (TaintState * Reach))) => (fullWalk walk)) 784 (0, ((taintStart), (record Reach {n0 := 800, n1 := 800, n2 := 800, n3 := 800, n4 := 800, n5 := 800, n6 := 800, n7 := 800, n8 := 800, n9 := 800, n10 := 800, n11 := 800, n12 := 800, n13 := 800, n14 := 800, n15 := 800}))) : (Nat * (TaintState * Reach)))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: maskOf,
+  parameters: [w : Nat],
+  result: UInt32,
+  body: (Blake3Uor.Blake3::shiftLeft (1 : UInt32) (Blake3Uor.Blake3::wordOfNat w 5)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: maskStep,
+  parameters: [masks : Blake3Uor.Blake3::Words16, k : Nat],
+  result: Blake3Uor.Blake3::Words16,
+  body: (let row : Blake3Uor.Blake3::Row := (Blake3UorReverse.Blake3Reverse::rowFor k); (Blake3Uor.Blake3::setWord masks (project row dest) (prim bit_or (Blake3Uor.Blake3::getWord masks (project row dest)) (match (project row kind)
+    | Blake3Uor.Blake3::Op.opAdd => (Blake3Uor.Blake3::getWord masks (project row source))
+    | Blake3Uor.Blake3::Op.opAddMsg => (maskOf (Blake3Uor.Blake3::slotWord (Blake3UorReverse.Blake3Reverse::roundOf k) (project row source)))
+    | Blake3Uor.Blake3::Op.opXor => (Blake3Uor.Blake3::getWord masks (project row source))
+    | Blake3Uor.Blake3::Op.opRor => (0 : UInt32)
+    | Blake3Uor.Blake3::Op.opXorCv => (maskOf ((project row source) + 16))) : UInt32))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: masksFull,
+  parameters: [masks : Blake3Uor.Blake3::Words16],
+  result: Bool,
+  body: ((prim equal (project masks v0) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v1) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v2) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v3) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v4) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v5) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v6) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v7) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v8) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v9) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v10) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v11) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v12) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v13) (4043309055 : UInt32) : Bool) && ((prim equal (project masks v14) (4043309055 : UInt32) : Bool) && (prim equal (project masks v15) (4043309055 : UInt32) : Bool)))))))))))))))),
+  executable: true
+}
+
+definition{
+  name: maskWalk,
+  parameters: [walk : (Nat * (Blake3Uor.Blake3::Words16 * Nat))],
+  result: (Nat * (Blake3Uor.Blake3::Words16 * Nat)),
+  body: (let k : Nat := (first walk); (let masks : Blake3Uor.Blake3::Words16 := (maskStep (first (second walk)) k); (((first walk) + 1), (masks, (if (((second (second walk)) =? 800) && (masksFull masks)) then k else (second (second walk))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: wordDiffusion,
+  parameters: [],
+  result: Nat,
+  body: (second (second (prim iterate (fun (walk : (Nat * (Blake3Uor.Blake3::Words16 * Nat))) => (maskWalk walk)) 784 (0, ((record Blake3Uor.Blake3::Words16 {v0 := (65536 : UInt32), v1 := (131072 : UInt32), v2 := (262144 : UInt32), v3 := (524288 : UInt32), v4 := (1048576 : UInt32), v5 := (2097152 : UInt32), v6 := (4194304 : UInt32), v7 := (8388608 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (268435456 : UInt32), v13 := (536870912 : UInt32), v14 := (1073741824 : UInt32), v15 := (2147483648 : UInt32)}), 800)) : (Nat * (Blake3Uor.Blake3::Words16 * Nat))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+\end{semanticmodule}
+\end{lexlean}

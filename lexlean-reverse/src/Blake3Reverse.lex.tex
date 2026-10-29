@@ -1,0 +1,303 @@
+\begin{lexlean}{Blake3Reverse}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3Uor.Blake3}
+\title{Natural number addition}
+\begin{semanticmodule}
+definition{
+  name: sub32,
+  parameters: [left : UInt32, right : UInt32],
+  result: UInt32,
+  body: (match (prim checked_add (Blake3Uor.Blake3::widen left) (4294967296 : UInt64) : (Option UInt64))
+    | Option.some big => (match (prim checked_subtract big (Blake3Uor.Blake3::widen right) : (Option UInt64))
+      | Option.some diff => (Blake3Uor.Blake3::narrow diff)
+      | Option.none => (0 : UInt32))
+    | Option.none => (0 : UInt32)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: rotl,
+  parameters: [value : UInt32, amount : UInt32],
+  result: UInt32,
+  body: (match (prim checked_subtract (32 : UInt32) amount : (Option UInt32))
+    | Option.some complement => (Blake3Uor.Blake3::rotateRight value complement amount)
+    | Option.none => value),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: undo,
+  parameters: [kind : Blake3Uor.Blake3::Op, result : UInt32, right : UInt32],
+  result: UInt32,
+  body: (match kind
+    | Blake3Uor.Blake3::Op.opAdd => (sub32 result right)
+    | Blake3Uor.Blake3::Op.opAddMsg => (sub32 result right)
+    | Blake3Uor.Blake3::Op.opXor => (Blake3Uor.Blake3::xor result right)
+    | Blake3Uor.Blake3::Op.opRor => (rotl result right)
+    | Blake3Uor.Blake3::Op.opXorCv => (Blake3Uor.Blake3::xor result right)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: roundOf,
+  parameters: [k : Nat],
+  result: Nat,
+  body: (if (k <? 784) then (prim quotient k 112 0 : Nat) else 7),
+  executable: true
+}
+
+definition{
+  name: rowFor,
+  parameters: [k : Nat],
+  result: Blake3Uor.Blake3::Row,
+  body: (Blake3Uor.Blake3::rowAt (if (k <? 784) then (prim remainder k 112 0 : Nat) else (prim subtract k 672 : Nat))),
+  executable: true
+}
+
+definition{
+  name: operand,
+  parameters: [
+    cv : Blake3Uor.Blake3::Cv,
+    m : Blake3Uor.Blake3::Words16,
+    st : Blake3Uor.Blake3::Words16,
+    k : Nat
+  ],
+  result: UInt32,
+  body: (let row : Blake3Uor.Blake3::Row := (rowFor k); (match (project row kind)
+    | Blake3Uor.Blake3::Op.opAdd => (Blake3Uor.Blake3::getWord st (project row source))
+    | Blake3Uor.Blake3::Op.opAddMsg => (Blake3Uor.Blake3::getWord m (Blake3Uor.Blake3::slotWord (roundOf k) (project row source)))
+    | Blake3Uor.Blake3::Op.opXor => (Blake3Uor.Blake3::getWord st (project row source))
+    | Blake3Uor.Blake3::Op.opRor => (Blake3Uor.Blake3::amountWord (project row source))
+    | Blake3Uor.Blake3::Op.opXorCv => (Blake3Uor.Blake3::getCv cv (project row source)))),
+  executable: true
+}
+
+definition{
+  name: stepForward,
+  parameters: [
+    cv : Blake3Uor.Blake3::Cv,
+    m : Blake3Uor.Blake3::Words16,
+    st : Blake3Uor.Blake3::Words16,
+    k : Nat
+  ],
+  result: Blake3Uor.Blake3::Words16,
+  body: (project (Blake3Uor.Blake3::machineStep cv m (record Blake3Uor.Blake3::Machine {state := st, out := (record Blake3Uor.Blake3::Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)}), log := (nil Blake3Uor.Blake3::Step)}) k) state),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: stepBack,
+  parameters: [
+    cv : Blake3Uor.Blake3::Cv,
+    m : Blake3Uor.Blake3::Words16,
+    st : Blake3Uor.Blake3::Words16,
+    k : Nat
+  ],
+  result: Blake3Uor.Blake3::Words16,
+  body: (let row : Blake3Uor.Blake3::Row := (rowFor k); (if ((roundOf k) =? 7) then st else (Blake3Uor.Blake3::setWord st (project row dest) (undo (project row kind) (Blake3Uor.Blake3::getWord st (project row dest)) (operand cv m st k))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: unfeed,
+  parameters: [out : Blake3Uor.Blake3::Words16, cv : Blake3Uor.Blake3::Cv],
+  result: Blake3Uor.Blake3::Words16,
+  body: (record Blake3Uor.Blake3::Words16 {v0 := (Blake3Uor.Blake3::xor (project out v0) (Blake3Uor.Blake3::xor (project out v8) (project cv h0))), v1 := (Blake3Uor.Blake3::xor (project out v1) (Blake3Uor.Blake3::xor (project out v9) (project cv h1))), v2 := (Blake3Uor.Blake3::xor (project out v2) (Blake3Uor.Blake3::xor (project out v10) (project cv h2))), v3 := (Blake3Uor.Blake3::xor (project out v3) (Blake3Uor.Blake3::xor (project out v11) (project cv h3))), v4 := (Blake3Uor.Blake3::xor (project out v4) (Blake3Uor.Blake3::xor (project out v12) (project cv h4))), v5 := (Blake3Uor.Blake3::xor (project out v5) (Blake3Uor.Blake3::xor (project out v13) (project cv h5))), v6 := (Blake3Uor.Blake3::xor (project out v6) (Blake3Uor.Blake3::xor (project out v14) (project cv h6))), v7 := (Blake3Uor.Blake3::xor (project out v7) (Blake3Uor.Blake3::xor (project out v15) (project cv h7))), v8 := (Blake3Uor.Blake3::xor (project out v8) (project cv h0)), v9 := (Blake3Uor.Blake3::xor (project out v9) (project cv h1)), v10 := (Blake3Uor.Blake3::xor (project out v10) (project cv h2)), v11 := (Blake3Uor.Blake3::xor (project out v11) (project cv h3)), v12 := (Blake3Uor.Blake3::xor (project out v12) (project cv h4)), v13 := (Blake3Uor.Blake3::xor (project out v13) (project cv h5)), v14 := (Blake3Uor.Blake3::xor (project out v14) (project cv h6)), v15 := (Blake3Uor.Blake3::xor (project out v15) (project cv h7))}),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: mixBack,
+  parameters: [
+    cv : Blake3Uor.Blake3::Cv,
+    m : Blake3Uor.Blake3::Words16,
+    s : Blake3Uor.Blake3::Words16
+  ],
+  result: Blake3Uor.Blake3::Words16,
+  body: (second (prim iterate (fun [cv, m] (walk : (Nat * Blake3Uor.Blake3::Words16)) => (((first walk) + 1), (stepBack cv m (second walk) (prim subtract 783 (first walk) : Nat)))) 784 (0, s) : (Nat * Blake3Uor.Blake3::Words16))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: compressBack,
+  parameters: [
+    out : Blake3Uor.Blake3::Words16,
+    cv : Blake3Uor.Blake3::Cv,
+    m : Blake3Uor.Blake3::Words16
+  ],
+  result: Blake3Uor.Blake3::Words16,
+  body: (mixBack cv m (unfeed out cv)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: stepTag,
+  parameters: [s : Blake3Uor.Blake3::Step, kept : Nat, messageKnown : Bool],
+  result: Nat,
+  body: (if ((project s round) <? 7) then (match (project s op)
+    | Blake3Uor.Blake3::Op.opAddMsg => (if messageKnown then 0 else 1)
+    | Blake3Uor.Blake3::Op.opAdd => 0
+    | Blake3Uor.Blake3::Op.opXor => 0
+    | Blake3Uor.Blake3::Op.opRor => 0
+    | Blake3Uor.Blake3::Op.opXorCv => 0) else (if (kept <? 16) then 1 else 0)),
+  executable: true
+}
+
+definition{
+  name: wordsSame,
+  parameters: [a : Blake3Uor.Blake3::Words16, b : Blake3Uor.Blake3::Words16],
+  result: Bool,
+  body: ((prim equal (project a v0) (project b v0) : Bool) && ((prim equal (project a v1) (project b v1) : Bool) && ((prim equal (project a v2) (project b v2) : Bool) && ((prim equal (project a v3) (project b v3) : Bool) && ((prim equal (project a v4) (project b v4) : Bool) && ((prim equal (project a v5) (project b v5) : Bool) && ((prim equal (project a v6) (project b v6) : Bool) && ((prim equal (project a v7) (project b v7) : Bool) && ((prim equal (project a v8) (project b v8) : Bool) && ((prim equal (project a v9) (project b v9) : Bool) && ((prim equal (project a v10) (project b v10) : Bool) && ((prim equal (project a v11) (project b v11) : Bool) && ((prim equal (project a v12) (project b v12) : Bool) && ((prim equal (project a v13) (project b v13) : Bool) && ((prim equal (project a v14) (project b v14) : Bool) && (prim equal (project a v15) (project b v15) : Bool)))))))))))))))),
+  executable: true
+}
+
+structure{
+  name: Address,
+  type_parameters: [],
+  parameters: [],
+  fields: [{name: node, type: Nat}, {name: step, type: Nat}, {name: bit, type: Nat}]
+}
+
+definition{
+  name: stepAhead,
+  parameters: [a : Address, target : Nat, nodes : Nat],
+  result: Address,
+  body: (if (target <? 800) then (record Address {node := (project a node), step := target, bit := 0}) else (if (((project a node) + 1) <? nodes) then (record Address {node := ((project a node) + 1), step := 0, bit := 0}) else a)),
+  executable: true
+}
+
+definition{
+  name: stepBehind,
+  parameters: [a : Address, target : Nat],
+  result: Address,
+  body: (if (target <? (project a step)) then (record Address {node := (project a node), step := target, bit := 0}) else (if (0 <? (project a node)) then (record Address {node := (prim subtract (project a node) 1 : Nat), step := 784, bit := 0}) else a)),
+  executable: true
+}
+
+definition{
+  name: groupStart,
+  parameters: [a : Address, size : Nat],
+  result: Nat,
+  body: (let own : Nat := (if ((project a step) <? 784) then (prim multiply (prim quotient (project a step) size 0 : Nat) size : Nat) else 784); (if (own <? (project a step)) then own else (if (own =? 784) then (prim subtract 784 size : Nat) else (if (own <? size) then own else (prim subtract own size : Nat))))),
+  executable: true
+}
+
+definition{
+  name: cursorMove,
+  parameters: [a : Address, granularity : Nat, backwards : Bool, nodes : Nat],
+  result: Address,
+  body: (if backwards then (if (granularity =? 0) then (if (0 <? (project a bit)) then (record Address {node := (project a node), step := (project a step), bit := (prim subtract (project a bit) 1 : Nat)}) else (if (0 <? (project a step)) then (record Address {node := (project a node), step := (prim subtract (project a step) 1 : Nat), bit := 31}) else (if (0 <? (project a node)) then (record Address {node := (prim subtract (project a node) 1 : Nat), step := 799, bit := 31}) else a))) else (if (granularity =? 1) then (if (0 <? (project a step)) then (record Address {node := (project a node), step := (prim subtract (project a step) 1 : Nat), bit := 0}) else (if (0 <? (project a node)) then (record Address {node := (prim subtract (project a node) 1 : Nat), step := 799, bit := 0}) else a)) else (if (granularity =? 2) then (stepBehind a (groupStart a 14)) else (if (granularity =? 3) then (stepBehind a (groupStart a 112)) else (if (0 <? (project a node)) then (record Address {node := (prim subtract (project a node) 1 : Nat), step := 0, bit := 0}) else a))))) else (if (granularity =? 0) then (if (((project a bit) + 1) <? 32) then (record Address {node := (project a node), step := (project a step), bit := ((project a bit) + 1)}) else (stepAhead a ((project a step) + 1) nodes)) else (if (granularity =? 1) then (stepAhead a ((project a step) + 1) nodes) else (if (granularity =? 2) then (stepAhead a (if ((project a step) <? 784) then (prim multiply ((prim quotient (project a step) 14 0 : Nat) + 1) 14 : Nat) else 800) nodes) else (if (granularity =? 3) then (stepAhead a (if ((project a step) <? 784) then (prim multiply ((prim quotient (project a step) 112 0 : Nat) + 1) 112 : Nat) else 800) nodes) else (stepAhead a 800 nodes)))))),
+  executable: true
+}
+
+definition{
+  name: opFromCode,
+  parameters: [code : Nat],
+  result: Blake3Uor.Blake3::Op,
+  body: (if (code =? 0) then (ctor Blake3Uor.Blake3::Op.opAdd) else (if (code =? 1) then (ctor Blake3Uor.Blake3::Op.opAddMsg) else (if (code =? 2) then (ctor Blake3Uor.Blake3::Op.opXor) else (if (code =? 3) then (ctor Blake3Uor.Blake3::Op.opRor) else (ctor Blake3Uor.Blake3::Op.opXorCv))))),
+  executable: true
+}
+
+definition{
+  name: kindCodeOf,
+  parameters: [kind : Blake3Uor.Blake3::Op],
+  result: Nat,
+  body: (match kind
+    | Blake3Uor.Blake3::Op.opAdd => 0
+    | Blake3Uor.Blake3::Op.opAddMsg => 1
+    | Blake3Uor.Blake3::Op.opXor => 2
+    | Blake3Uor.Blake3::Op.opRor => 3
+    | Blake3Uor.Blake3::Op.opXorCv => 4),
+  executable: true
+}
+
+definition{
+  name: stepRoundTrip,
+  parameters: [kind : Nat, left : UInt32, right : UInt32],
+  result: Bool,
+  body: (let op : Blake3Uor.Blake3::Op := (opFromCode kind); (prim equal (undo op (Blake3Uor.Blake3::perform op left right) right) left : Bool)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: unmix,
+  parameters: [chain : Bytes, block : Bytes, out : Bytes],
+  result: Bytes,
+  body: (Blake3Uor.Blake3::blockBytes (compressBack (Blake3Uor.Blake3::loadBlock out 64 0) (Blake3Uor.Blake3::keyWordsOf chain) (Blake3Uor.Blake3::loadBlock block 64 0))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: agreeStep,
+  parameters: [
+    cv : Blake3Uor.Blake3::Cv,
+    m : Blake3Uor.Blake3::Words16,
+    walk : (Nat * (Blake3Uor.Blake3::Words16 * Bool))
+  ],
+  result: (Nat * (Blake3Uor.Blake3::Words16 * Bool)),
+  body: (let k : Nat := (first walk); (let before : Blake3Uor.Blake3::Words16 := (first (second walk)); (let after : Blake3Uor.Blake3::Words16 := (stepForward cv m before k); ((k + 1), (after, ((second (second walk)) && (wordsSame (stepBack cv m after k) before))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: prevAgrees,
+  parameters: [chain : Bytes, block : Bytes, lo : UInt32, hi : UInt32, len : UInt32, fl : UInt32],
+  result: Bool,
+  body: (let cv : Blake3Uor.Blake3::Cv := (Blake3Uor.Blake3::keyWordsOf chain); (let m : Blake3Uor.Blake3::Words16 := (Blake3Uor.Blake3::loadBlock block 64 0); (second (second (prim iterate (fun [cv, m] (walk : (Nat * (Blake3Uor.Blake3::Words16 * Bool))) => (agreeStep cv m walk)) 800 (0, ((Blake3Uor.Blake3::initialState cv lo hi len fl), true)) : (Nat * (Blake3Uor.Blake3::Words16 * Bool))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: stepRecord,
+  parameters: [s : Blake3Uor.Blake3::Step, tag : Nat],
+  result: Bytes,
+  body: (Blake3Uor.Blake3::concatAll (cons (Blake3Uor.Blake3::byteOf (Blake3Uor.Blake3::wordOfNat (project s round) 8)) (cons (Blake3Uor.Blake3::byteOf (Blake3Uor.Blake3::wordOfNat (project s g) 8)) (cons (Blake3Uor.Blake3::byteOf (Blake3Uor.Blake3::wordOfNat (project s index) 8)) (cons (Blake3Uor.Blake3::byteOf (Blake3Uor.Blake3::wordOfNat (kindCodeOf (project s op)) 8)) (cons (Blake3Uor.Blake3::byteOf (Blake3Uor.Blake3::wordOfNat (project s dest) 8)) (cons (Blake3Uor.Blake3::byteOf (Blake3Uor.Blake3::wordOfNat (project s source) 8)) (cons (Blake3Uor.Blake3::wordBytes (project s left)) (cons (Blake3Uor.Blake3::wordBytes (project s right)) (cons (Blake3Uor.Blake3::wordBytes (project s result)) (cons (Blake3Uor.Blake3::byteOf (Blake3Uor.Blake3::wordOfNat tag 8)) (nil Bytes)))))))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: compressionsOf,
+  parameters: [trace : Blake3Uor.Blake3::Trace],
+  result: (List Blake3Uor.Blake3::Node),
+  body: (prim list_fold (fun (acc : (List Blake3Uor.Blake3::Node)) (event : Blake3Uor.Blake3::Event) => (match event
+    | Blake3Uor.Blake3::Event.compressed n => (cons n acc)
+    | Blake3Uor.Blake3::Event.pushed e depth => acc
+    | Blake3Uor.Blake3::Event.popped e depth => acc)) (nil Blake3Uor.Blake3::Node) (prim append (project trace prelude) (project trace events) : (List Blake3Uor.Blake3::Event)) : (List Blake3Uor.Blake3::Node)),
+  executable: true
+}
+
+definition{
+  name: seekStep,
+  parameters: [
+    mode : Blake3Uor.Blake3::Mode,
+    pieces : (List Bytes),
+    outLen : Nat,
+    node : Nat,
+    step : Nat
+  ],
+  result: (Result Bytes Blake3Uor.Blake3::Blake3Error),
+  body: (match (Blake3Uor.Blake3::traceOf mode pieces outLen)
+    | Result.ok trace => (ctor Result.ok [Bytes, Blake3Uor.Blake3::Blake3Error] (let nodes : (List Blake3Uor.Blake3::Node) := (compressionsOf trace); (let count : Nat := (prim length nodes : Nat); (if ((node <? count) && (step <? 800)) then (match (prim index nodes (prim subtract (prim subtract count 1 : Nat) node : Nat) : (Option Blake3Uor.Blake3::Node))
+      | Option.some n => (let t : Blake3Uor.Blake3::CompressionTrace := (Blake3Uor.Blake3::compressTrace (project n chain) (project n block) (project n counterLo) (project n counterHi) (project n blockLen) (project n flags)); (match (prim index (project t log) (prim subtract 799 step : Nat) : (Option Blake3Uor.Blake3::Step))
+        | Option.some s => (stepRecord s (stepTag s (if ((project n role) =? 2) then 16 else 8) true))
+        | Option.none => 0x))
+      | Option.none => 0x) else 0x))))
+    | Result.error refused => (ctor Result.error [Bytes, Blake3Uor.Blake3::Blake3Error] refused)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+\end{semanticmodule}
+\end{lexlean}

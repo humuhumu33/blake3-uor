@@ -1,0 +1,21 @@
+\begin{lexlean}{Blake3KernelCompressionIsItsWordTrace}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3}
+\title{Natural number addition}
+\begin{semanticmodule}
+theorem{
+  name: compression_is_its_word_trace,
+  parameters: [
+    cv : Blake3::Cv,
+    m : Blake3::Words16,
+    lo : UInt32,
+    hi : UInt32,
+    len : UInt32,
+    fl : UInt32
+  ],
+  statement: ((Blake3::compress cv m lo hi len fl) = (Blake3::compressOut (Blake3::compressTrace cv m lo hi len fl))),
+  proof: reflexivity{},
+  axioms: [Quot.sound, propext]
+}
+\end{semanticmodule}
+\end{lexlean}

@@ -10,9 +10,31 @@
 # The meta-gate proves the suite never asserts an `open` claim as established,
 # and `CM-03` proves every `some-true` row cites an authority that exists.
 #
-# The ledger is empty. A claim added here needs its level chosen first, because
-# the level decides what evidence it owes.
-
 spec = "template/1"
 
-claim = []
+[[claim]]
+id = "AUTH-BLAKE3-VECTORS"
+level = "some-true"
+statement = "The official BLAKE3 test vectors are the outputs of BLAKE3 as specified."
+authority = "AUTH-BLAKE3"
+
+[[claim]]
+id = "OPEN-B3-THROUGHPUT"
+level = "open"
+statement = "Single-thread throughput of the exported blake3_hash package against the blake3 crate's portable and SIMD builds, as reported by `cargo run --release -p blake3-check --bin throughput` in docs/blake3-verification.md."
+
+[[claim]]
+id = "OPEN-B3-PRISM-IMAGE"
+level = "open"
+statement = "A local Prism image of prism/Blake3Image.lex.tex (the core, the stdlib Sha256 and the trace module in one file), built and checked with the prism-browser-runtime tooling outside this repository, as reported in docs/blake3-verification.md."
+
+[[claim]]
+id = "OPEN-B3-TRACE-SIZES"
+level = "open"
+statement = "Sizes of the serialised trace at the tree, word and bit levels for 64 B, 1 KiB and 1 MiB inputs, as reported by `cargo run --release -p blake3-check --bin trace_sizes` in docs/blake3-verification.md."
+
+[[claim]]
+id = "AUTH-LEXLEAN-STDLIB-SHA256"
+level = "some-true"
+statement = "LexLean's stdlib Sha256 computes FIPS 180-4 SHA-256; the trace's sha256 DigestSet axis rests on it."
+authority = "AUTH-LEXLEAN-STDLIB"

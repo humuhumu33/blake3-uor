@@ -23,3 +23,16 @@ criterion/
 
 # `Cargo.lock` is NOT ignored: the resolved version of every oracle is part of
 # the claim made against it (R11).
+
+# LexLean and Lake build state; the committed evidence is export/.
+/lexlean/.lexlean/
+/lexlean/.lake/
+/lexlean-trace/.lexlean/
+/lexlean-trace/.lake/
+/lexlean-reverse/.lexlean/
+/lexlean-reverse/.lake/
+/lexlean-slice/.lexlean/
+/lexlean-slice/.lake/
+/lexlean-analysis/.lexlean/
+/lexlean-analysis/.lake/
+__pycache__/

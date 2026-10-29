@@ -1,0 +1,190 @@
+\begin{lexlean}{Blake3Slice}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3Uor.Blake3}
+\title{Natural number addition}
+\begin{semanticmodule}
+inductive{
+  name: SliceError,
+  type_parameters: [],
+  parameters: [],
+  constructors: [
+    {name: keyLength, fields: [Nat]},
+    {name: outOfRange, fields: []},
+    {name: header, fields: []},
+    {name: rootLength, fields: []},
+    {name: parent, fields: [Nat]},
+    {name: size, fields: []},
+    {name: chunk, fields: []}
+  ]
+}
+
+definition{
+  name: chunkCount,
+  parameters: [len : Nat],
+  result: Nat,
+  body: (if (len =? 0) then 1 else ((prim quotient (prim subtract len 1 : Nat) 1024 0 : Nat) + 1)),
+  executable: true
+}
+
+definition{
+  name: chunkSize,
+  parameters: [len : Nat, chunk : Nat],
+  result: Nat,
+  body: (let begin : Nat := (prim multiply chunk 1024 : Nat); (if ((begin + 1024) <=? len) then 1024 else (prim subtract len begin : Nat))),
+  executable: true
+}
+
+definition{
+  name: leftSpan,
+  parameters: [size : Nat],
+  result: Nat,
+  body: (first (prim iterate_until (fun [size] (p : Nat) => (if ((prim multiply p 2 : Nat) <? size) then (ctor Option.some [Nat] (prim multiply p 2 : Nat)) else (ctor Option.none [Nat]))) 64 1 : (Nat * Bool))),
+  executable: true
+}
+
+definition{
+  name: chainBytes,
+  parameters: [c : Blake3Uor.Blake3::Cv],
+  result: Bytes,
+  body: (prim append (Blake3Uor.Blake3::wordBytes (project c h0)) (prim append (Blake3Uor.Blake3::wordBytes (project c h1)) (prim append (Blake3Uor.Blake3::wordBytes (project c h2)) (prim append (Blake3Uor.Blake3::wordBytes (project c h3)) (prim append (Blake3Uor.Blake3::wordBytes (project c h4)) (prim append (Blake3Uor.Blake3::wordBytes (project c h5)) (prim append (Blake3Uor.Blake3::wordBytes (project c h6)) (Blake3Uor.Blake3::wordBytes (project c h7)) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: lengthBytes,
+  parameters: [len : Nat],
+  result: Bytes,
+  body: (prim append (Blake3Uor.Blake3::wordBytes (Blake3Uor.Blake3::counterLow len)) (Blake3Uor.Blake3::wordBytes (Blake3Uor.Blake3::counterHigh len)) : Bytes),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: chainsSame,
+  parameters: [a : Blake3Uor.Blake3::Cv, b : Blake3Uor.Blake3::Cv],
+  result: Bool,
+  body: ((prim equal (project a h0) (project b h0) : Bool) && ((prim equal (project a h1) (project b h1) : Bool) && ((prim equal (project a h2) (project b h2) : Bool) && ((prim equal (project a h3) (project b h3) : Bool) && ((prim equal (project a h4) (project b h4) : Bool) && ((prim equal (project a h5) (project b h5) : Bool) && ((prim equal (project a h6) (project b h6) : Bool) && (prim equal (project a h7) (project b h7) : Bool)))))))),
+  executable: true
+}
+
+definition{
+  name: upperChain,
+  parameters: [w : Blake3Uor.Blake3::Words16],
+  result: Blake3Uor.Blake3::Cv,
+  body: (record Blake3Uor.Blake3::Cv {h0 := (project w v8), h1 := (project w v9), h2 := (project w v10), h3 := (project w v11), h4 := (project w v12), h5 := (project w v13), h6 := (project w v14), h7 := (project w v15)}),
+  executable: true
+}
+
+definition{
+  name: treeNodes,
+  parameters: [trace : Blake3Uor.Blake3::Trace],
+  result: (List Blake3Uor.Blake3::Node),
+  body: (prim list_fold (fun (acc : (List Blake3Uor.Blake3::Node)) (event : Blake3Uor.Blake3::Event) => (match event
+    | Blake3Uor.Blake3::Event.compressed n => (cons n acc)
+    | Blake3Uor.Blake3::Event.pushed e depth => acc
+    | Blake3Uor.Blake3::Event.popped e depth => acc)) (nil Blake3Uor.Blake3::Node) (project trace events) : (List Blake3Uor.Blake3::Node)),
+  executable: true
+}
+
+definition{
+  name: covers,
+  parameters: [n : Blake3Uor.Blake3::Node, origin : Nat, span : Nat],
+  result: Bool,
+  body: (if (span =? 1) then (((project n role) =? 0) && (((project n origin) =? origin) && (if (prim equal (prim bit_and (project n flags) (Blake3Uor.Blake3::flagChunkEnd) : UInt32) (0 : UInt32) : Bool) then false else true))) else (((project n role) =? 1) && (((project n origin) =? origin) && ((project n span) =? span)))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: subtreeChain,
+  parameters: [nodes : (List Blake3Uor.Blake3::Node), origin : Nat, span : Nat],
+  result: Blake3Uor.Blake3::Cv,
+  body: (Blake3Uor.Blake3::cvOf (prim list_fold (fun [origin, span] (acc : Blake3Uor.Blake3::Words16) (n : Blake3Uor.Blake3::Node) => (if (covers n origin span) then (project n output) else acc)) (record Blake3Uor.Blake3::Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)}) nodes : Blake3Uor.Blake3::Words16)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: descend,
+  parameters: [
+    nodes : (List Blake3Uor.Blake3::Node),
+    chunk : Nat,
+    st : (Nat * (Nat * (List Bytes)))
+  ],
+  result: (Option (Nat * (Nat * (List Bytes)))),
+  body: (let lo : Nat := (first st); (let size : Nat := (first (second st)); (let acc : (List Bytes) := (second (second st)); (if (size <=? 1) then (ctor Option.none [(Nat * (Nat * (List Bytes)))]) else (let left : Nat := (leftSpan size); (let node : Bytes := (prim append (chainBytes (subtreeChain nodes lo left)) (chainBytes (subtreeChain nodes (lo + left) (prim subtract size left : Nat))) : Bytes); (if (chunk <? (lo + left)) then (ctor Option.some [(Nat * (Nat * (List Bytes)))] (lo, (left, (cons node acc)))) else (ctor Option.some [(Nat * (Nat * (List Bytes)))] ((lo + left), ((prim subtract size left : Nat), (cons node acc))))))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: sliceOf,
+  parameters: [mode : Blake3Uor.Blake3::Mode, input : Bytes, chunk : Nat],
+  result: (Result Bytes Blake3Uor.Blake3::Blake3Error),
+  body: (match (Blake3Uor.Blake3::traceOf mode (cons input (nil Bytes)) 32)
+    | Result.ok trace => (ctor Result.ok [Bytes, Blake3Uor.Blake3::Blake3Error] (let len : Nat := (prim length input : Nat); (let n : Nat := (chunkCount len); (let nodes : (List Blake3Uor.Blake3::Node) := (treeNodes trace); (if (chunk <? n) then (let parents : (List Bytes) := (second (second (first (prim iterate_until (fun [chunk, nodes] (st : (Nat * (Nat * (List Bytes)))) => (descend nodes chunk st)) 64 (0, (n, (nil Bytes))) : ((Nat * (Nat * (List Bytes))) * Bool))))); (let data : Bytes := (match (prim slice input (prim multiply chunk 1024 : Nat) (chunkSize len chunk) : (Option Bytes))
+      | Option.some d => d
+      | Option.none => 0x); (Blake3Uor.Blake3::concatAll (cons (lengthBytes len) (prim list_fold (fun (acc : (List Bytes)) (node : Bytes) => (cons node acc)) (cons data (nil Bytes)) parents : (List Bytes)))))) else 0x)))))
+    | Result.error refused => (ctor Result.error [Bytes, Blake3Uor.Blake3::Blake3Error] refused)),
+  axioms: [Quot.sound, propext],
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+
+structure{
+  name: Walk,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: lo, type: Nat},
+    {name: size, type: Nat},
+    {name: pos, type: Nat},
+    {name: expected, type: Blake3Uor.Blake3::Cv},
+    {name: top, type: Bool},
+    {name: level, type: Nat},
+    {name: failed, type: Bool}
+  ]
+}
+
+definition{
+  name: checkLevel,
+  parameters: [key : Blake3Uor.Blake3::Cv, base : UInt32, slice : Bytes, chunk : Nat, w : Walk],
+  result: (Option Walk),
+  body: (if (project w failed) then (ctor Option.none [Walk]) else (if ((project w size) <=? 1) then (ctor Option.none [Walk]) else (if (((project w pos) + 64) <=? (prim length slice : Nat)) then (let block : Blake3Uor.Blake3::Words16 := (Blake3Uor.Blake3::loadBlock slice (prim length slice : Nat) (project w pos)); (let flags : UInt32 := (prim bit_or base (if (project w top) then (prim bit_or (Blake3Uor.Blake3::flagParent) (Blake3Uor.Blake3::flagRoot) : UInt32) else (Blake3Uor.Blake3::flagParent)) : UInt32); (let out : Blake3Uor.Blake3::Words16 := (Blake3Uor.Blake3::compress key block (0 : UInt32) (0 : UInt32) (64 : UInt32) flags); (if (chainsSame (Blake3Uor.Blake3::cvOf out) (project w expected)) then (let left : Nat := (leftSpan (project w size)); (if (chunk <? ((project w lo) + left)) then (ctor Option.some [Walk] (record Walk {lo := (project w lo), size := left, pos := ((project w pos) + 64), expected := (Blake3Uor.Blake3::cvOf block), top := false, level := ((project w level) + 1), failed := (project w failed)})) else (ctor Option.some [Walk] (record Walk {lo := ((project w lo) + left), size := (prim subtract (project w size) left : Nat), pos := ((project w pos) + 64), expected := (upperChain block), top := false, level := ((project w level) + 1), failed := (project w failed)})))) else (ctor Option.some [Walk] (record Walk {lo := (project w lo), size := (project w size), pos := (project w pos), expected := (project w expected), top := (project w top), level := (project w level), failed := true})))))) else (ctor Option.some [Walk] (record Walk {lo := (project w lo), size := (project w size), pos := (project w pos), expected := (project w expected), top := (project w top), level := (project w level), failed := true}))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: checkWith,
+  parameters: [
+    key : Blake3Uor.Blake3::Cv,
+    base : UInt32,
+    slice : Bytes,
+    chunk : Nat,
+    len : Nat,
+    root : Bytes
+  ],
+  result: (Result Bytes SliceError),
+  body: (if (chunk <? (chunkCount len)) then (if ((prim length root : Nat) =? 32) then (if ((8 <=? (prim length slice : Nat)) && ((prim equal (Blake3Uor.Blake3::blockWord slice 8 0) (Blake3Uor.Blake3::counterLow len) : Bool) && (prim equal (Blake3Uor.Blake3::blockWord slice 8 4) (Blake3Uor.Blake3::counterHigh len) : Bool))) then (let walked : Walk := (first (prim iterate_until (fun [base, chunk, key, slice] (w : Walk) => (checkLevel key base slice chunk w)) 64 (record Walk {lo := 0, size := (chunkCount len), pos := 8, expected := (Blake3Uor.Blake3::keyWordsOf root), top := true, level := 0, failed := false}) : (Walk * Bool))); (if (project walked failed) then (ctor Result.error [Bytes, SliceError] (ctor SliceError.parent (project walked level))) else (let size : Nat := (chunkSize len chunk); (let data : Bytes := (match (prim slice slice (project walked pos) (prim subtract (prim length slice : Nat) (project walked pos) : Nat) : (Option Bytes))
+    | Option.some d => d
+    | Option.none => 0x); (if ((prim length data : Nat) =? size) then (let pending : Blake3Uor.Blake3::Pending := (first (Blake3Uor.Blake3::chunkPending key base data 0 size chunk (nil Blake3Uor.Blake3::Event))); (let node : Blake3Uor.Blake3::Node := (Blake3Uor.Blake3::run (if (project walked top) then (Blake3Uor.Blake3::rootPending pending 0) else pending)); (if (chainsSame (Blake3Uor.Blake3::cvOf (project node output)) (project walked expected)) then (ctor Result.ok [Bytes, SliceError] data) else (ctor Result.error [Bytes, SliceError] (ctor SliceError.chunk))))) else (ctor Result.error [Bytes, SliceError] (ctor SliceError.size))))))) else (ctor Result.error [Bytes, SliceError] (ctor SliceError.header))) else (ctor Result.error [Bytes, SliceError] (ctor SliceError.rootLength))) else (ctor Result.error [Bytes, SliceError] (ctor SliceError.outOfRange))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: sliceCheck,
+  parameters: [mode : Blake3Uor.Blake3::Mode, slice : Bytes, chunk : Nat, len : Nat, root : Bytes],
+  result: (Result Bytes SliceError),
+  body: (match (Blake3Uor.Blake3::start mode)
+    | Result.ok h => (checkWith (project h keyWords) (project h modeFlags) slice chunk len root)
+    | Result.error refused => (match refused
+      | Blake3Uor.Blake3::Blake3Error.keyLength n => (ctor Result.error [Bytes, SliceError] (ctor SliceError.keyLength n)))),
+  axioms: [Quot.sound, propext],
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+\end{semanticmodule}
+\end{lexlean}

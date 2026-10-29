@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "xtask"]
+# The certified packages LexLean exports are dependencies, not members: their
+# bytes are LexLean's, so `cargo fmt` and `clippy` must not judge them.
+exclude = ["export"]
 
 [workspace.package]
 version = "0.1.0"
@@ -9,8 +12,8 @@ edition = "2021"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
 # Instantiated repositories set their own URLs here.
-repository = "https://github.com/UOR-Foundation/template"
-homepage = "https://github.com/UOR-Foundation/template"
+repository = "https://github.com/humuhumu33/blake3-uor"
+homepage = "https://github.com/humuhumu33/blake3-uor"
 authors = ["UOR Foundation"]
 keywords = []
 categories = []
@@ -21,6 +24,18 @@ repo-model = { version = "0.1.0", path = "crates/model" }
 # `cargo deny` refuses those (`wildcards = "deny"`). Every internal dependency
 # carries both.
 repo-conformance = { version = "0.1.0", path = "crates/conformance" }
+# The production roots of `lexlean/src/Blake3.lex.tex`, as LexLean exports them
+# (`lexlean production build --request lexlean/production-request.json`).
+blake3_hash = { version = "0.1.0", path = "export/rust-std/blake3_hash" }
+blake3_hash_hex = { version = "0.1.0", path = "export/rust-std/blake3_hash_hex" }
+blake3_keyed_hash = { version = "0.1.0", path = "export/rust-std/blake3_keyed_hash" }
+blake3_derive_key = { version = "0.1.0", path = "export/rust-std/blake3_derive_key" }
+blake3_hash_pieces = { version = "0.1.0", path = "export/rust-std/blake3_hash_pieces" }
+blake3_trace_file = { version = "0.1.0", path = "export/rust-std/blake3_trace_file" }
+blake3_trace_address = { version = "0.1.0", path = "export/rust-std/blake3_trace_address" }
+# Phase 2 (`lexlean production build --request lexlean-slice/production-request.json`).
+blake3_slice_of = { version = "0.1.0", path = "export/rust-std/blake3_slice_of" }
+blake3_slice_check = { version = "0.1.0", path = "export/rust-std/blake3_slice_check" }
 
 [workspace.lints.rust]
 missing_docs = "deny"
@@ -34,3 +49,26 @@ missing_safety_doc = "deny"
 opt-level = 3
 lto = "thin"
 codegen-units = 1
+
+# The differential hashes about 12 MB through the exported packages and the
+# oracle; unoptimized, that alone takes minutes.
+[profile.dev.package.blake3_hash]
+opt-level = 3
+[profile.dev.package.blake3_hash_hex]
+opt-level = 3
+[profile.dev.package.blake3_keyed_hash]
+opt-level = 3
+[profile.dev.package.blake3_derive_key]
+opt-level = 3
+[profile.dev.package.blake3_hash_pieces]
+opt-level = 3
+[profile.dev.package.blake3]
+opt-level = 3
+[profile.dev.package.blake3_trace_file]
+opt-level = 3
+[profile.dev.package.blake3_trace_address]
+opt-level = 3
+[profile.dev.package.blake3_slice_of]
+opt-level = 3
+[profile.dev.package.blake3_slice_check]
+opt-level = 3

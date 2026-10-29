@@ -1,0 +1,15 @@
+\begin{lexlean}{Blake3ReverseKernelRunsBack}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3Uor.Blake3}
+\importmodule{Blake3Reverse}
+\title{Natural number addition}
+\begin{semanticmodule}
+theorem{
+  name: compression_runs_back_to_its_start,
+  parameters: [],
+  statement: ((Blake3Reverse::compressBack (Blake3Uor.Blake3::compress (Blake3Uor.Blake3::iv) (record Blake3Uor.Blake3::Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)}) (0 : UInt32) (0 : UInt32) (0 : UInt32) (11 : UInt32)) (Blake3Uor.Blake3::iv) (record Blake3Uor.Blake3::Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)})) = (Blake3Uor.Blake3::initialState (Blake3Uor.Blake3::iv) (0 : UInt32) (0 : UInt32) (0 : UInt32) (11 : UInt32))),
+  proof: reflexivity{},
+  axioms: [Quot.sound, propext]
+}
+\end{semanticmodule}
+\end{lexlean}

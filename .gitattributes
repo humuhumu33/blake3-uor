@@ -1,0 +1,17 @@
+# Content-addressed bytes: LexLean identities, the export's digests and the
+# oracle's checksum are over exact bytes, so git must never convert line endings.
+*.lex.tex -text
+lexlean/lexlean.lock -text
+lexlean/production-request.json -text
+export/** -text
+oracles/** -text
+prism/registry/** -text
+prism/IMAGE -text
+lexlean-trace/production-request.json -text
+lexlean-trace/lexlean.lock -text
+lexlean-workspace.toml -text
+vendor/** -text
+lexlean-reverse/lexlean.lock -text
+lexlean-slice/lexlean.lock -text
+lexlean-analysis/lexlean.lock -text
+lexlean-slice/production-request.json -text

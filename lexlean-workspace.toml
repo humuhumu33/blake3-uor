@@ -1,0 +1,2 @@
+spec = "lexlean/workspace/1"
+members = ["lexlean", "lexlean-analysis", "lexlean-reverse", "lexlean-slice", "lexlean-trace", "vendor/lexlean-stdlib"]

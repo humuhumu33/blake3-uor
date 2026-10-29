@@ -18,14 +18,45 @@ The three honesty levels (R2):
 `cargo xtask audit-limits` fails if any code path returns an error the
 model does not sanction.
 
+## blake3
+
+| ID | Level | Statement |
+| --- | --- | --- |
+| `B3-01` | `build` | The exported packages reproduce all 35 cases of the official BLAKE3 1.8.7 test vectors in hash, keyed_hash and derive_key modes, 131 bytes of extended output each, and the 32-byte digest as lowercase hex. |
+| `B3-02` | `build` | The exported packages equal the blake3 crate 1.8.7 in all three modes on a seeded corpus whose lengths cover every block, chunk and tree boundary from 0 to 102400 bytes, at output lengths from 0 to 1031 bytes. |
+| `B3-03` | `build` | Incremental hashing (start, one update per piece, finalize) equals one-shot hashing for every tested split of every corpus input, in all three modes. |
+| `B3-04` | `build` | A keyed-hash key that is not 32 bytes is refused as Blake3Error.keyLength carrying its length, by keyedHash and by hashPieces. |
+| `B3-05` | `build` | The committed packages are the ones verified LexLean builds exported: each package file hashes to its provenance record, each package names the semantic identity its project's attestation verified, and the core attestation records all sixteen kernel theorems with exactly the axioms Quot.sound and propext. |
+| `B3-06` | `build` | The trace the certified traceFile writes records, in its root blob, the digest BLAKE3 computes and the input's ADR-015 DigestSet, and the trace's address is that root blob's DigestSet, in all three modes. |
+| `B3-07` | `build` | Every DigestSet in a trace, at every level, equals BLAKE3 and SHA-256 of its blob as the blake3 and sha2 crates compute them, and every label a blob names belongs to a blob before it. |
+| `B3-08` | `build` | checkTrace, run by the LexLean calculus engine in the committed Prism image, accepts every real trace at the tree, word and bit levels and returns the address traceAddress computes. |
+| `B3-09` | `build` | checkTrace rejects a flipped operation result, a flipped carry bit, a wrong permutation index, a reordered step, a wrong flag with its label kept or relabelled, a changed checkpoint with its label kept, and a forged parent link, each as the TraceError that names it; another input's trace is not this input's address. |
+| `B3-10` | `build` | The same mode, input and output length give byte-identical traces, however the input is split into updates. |
+| `B3-11` | `build` | Identical sub-computations have one address: the first chunk of two different inputs resolves to the same checkpoint and chunk labels. |
+| `B3-12` | `build` | vendor/lexlean-stdlib is LexLean main 6bcc8d598's stdlib byte for byte: its files are exactly lexlean.toml, src/Sha256.lex.tex and src/Text.lex.tex, the listing of their sha256 digests hashes to AUTH-LEXLEAN-STDLIB's checksum, and the trace project's lock pins that manifest. |
+| `B3-13` | `build` | One compression with a known message and CV runs back from its full 16-word output to exactly its initial state (CV, IV words, counter, block length, flags), by a kernel theorem for the empty input and in the image's engine for every root output block of seeded traces; with only 8 output words kept it does not. |
+| `B3-14` | `build` | Each operation's inverse undoes it: subtraction for add and addMsg, the same xor for xor and xorCv, rotate-left by n for rotate-right by n, over edge values and a seeded corpus, in the image's engine. |
+| `B3-15` | `build` | Stepping back by stepBack agrees with replaying forward from the checkpoint at every step of a compression; the cursor moves by bit, op, G, round and compression and stays at the ends; seek returns the step record the word-level trace holds, with its reversible or lossy tag. |
+| `B3-16` | `build` | From a label, the trace's links lead back through parents and chunks to the checkpoints that produced it, and forward to the blobs that consume it. |
+| `B3-17` | `build` | A slice of chunk N (Bao's layout: the input length, the parent nodes on the chunk's path from the root, the chunk) made by the exported sliceOf equals the bao crate's and one built from the blake3 crate's hazmat API, in every mode; the exported sliceCheck accepts it, hashing only the chunk and its path, and Bao's decoder accepts it; a wrong sibling or on-path CV at any level, a changed chunk byte, a short or long chunk, a wrong length field, index, root or key is refused with its own error, and kernel theorems hold the official 1025-byte input's slice accepted and two planted defects refused. |
+| `B3-18` | `build` | For two compression inputs differing by one bit, the image's diffTrace (forwards) and diffTraceBack (rebuilt from the outputs) give the same xor of left operand, right operand and result at every step, equal to the certified word-level trace files' records; diffReach gives the step at which the difference reaches each state word; a one-bit input change alters exactly the compressions on its chunk's slice path from the changed block on. |
+| `B3-19` | `build` | The image's dependency map (for each result bit of each step, the input bits with a structural path to it) equals a propagation written from the BLAKE3 specification; every observed difference of every message and key bit lies inside it; the first step of full diffusion (every bit of every state word on every input bit) is fullTaintSteps' maximum, and at word level a kernel theorem fixes it at step 163. |
+
 ## Cited authorities
 
 Never re-derived, vendored, or gated on.
 
 | Authority | Citation | Evidence here |
 | --- | --- | --- |
+| `AUTH-BLAKE3` | J.-P. Aumasson, S. Neves, J. O'Connor, Z. Wilcox-O'Hearn, The BLAKE3 cryptographic hash function, https://github.com/BLAKE3-team/BLAKE3-specs; test_vectors/test_vectors.json at BLAKE3 release 1.8.7, commit f3149ec5bb5449af877ba20377a11008ff499fa2, committed as oracles/blake3-1.8.7/test_vectors.json | `B3-01`, `B3-02` |
+| `AUTH-LEXLEAN-STDLIB` | UOR-Foundation/LexLean main, commit 6bcc8d59836506d6365dcfa4c755d068771c4f93, directory stdlib/: lexlean.toml, src/Sha256.lex.tex, src/Text.lex.tex; SPEC section 17.22, register SL-02. Vendored byte for byte under vendor/lexlean-stdlib/, the only form a LexLean source package can take (SPEC 10.5: packages are read from directories of the workspace, kind path and nothing else). LexLean's lock pins the copy as tree_sha256 c0be8a51cb95c7a1110ddc47a48b522c4c55a3522b240362e6daf9857401972a in lexlean-trace/lexlean.lock. | `B3-07`, `B3-12` |
 
 ## Claims that are not conformance IDs
 
 | ID | Level | Claim |
 | --- | --- | --- |
+| `AUTH-BLAKE3-VECTORS` | `some-true` | The official BLAKE3 test vectors are the outputs of BLAKE3 as specified. |
+| `OPEN-B3-THROUGHPUT` | `open` | Single-thread throughput of the exported blake3_hash package against the blake3 crate's portable and SIMD builds, as reported by `cargo run --release -p blake3-check --bin throughput` in docs/blake3-verification.md. |
+| `OPEN-B3-PRISM-IMAGE` | `open` | A local Prism image of prism/Blake3Image.lex.tex (the core, the stdlib Sha256 and the trace module in one file), built and checked with the prism-browser-runtime tooling outside this repository, as reported in docs/blake3-verification.md. |
+| `OPEN-B3-TRACE-SIZES` | `open` | Sizes of the serialised trace at the tree, word and bit levels for 64 B, 1 KiB and 1 MiB inputs, as reported by `cargo run --release -p blake3-check --bin trace_sizes` in docs/blake3-verification.md. |
+| `AUTH-LEXLEAN-STDLIB-SHA256` | `some-true` | LexLean's stdlib Sha256 computes FIPS 180-4 SHA-256; the trace's sha256 DigestSet axis rests on it. |

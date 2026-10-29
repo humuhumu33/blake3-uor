@@ -1,0 +1,14 @@
+\begin{lexlean}{Blake3KernelOfficialKeyedHash0}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3}
+\title{Natural number addition}
+\begin{semanticmodule}
+theorem{
+  name: official_keyed_hash_0,
+  parameters: [],
+  statement: ((Blake3::rootWordsAt (Blake3::finalTrace (Blake3::update (Blake3::hasherWith (Blake3::keyWordsOf 0x77686174732074686520456c7669736820776f726420666f7220667269656e64) (Blake3::flagKeyedHash)) 0x) 64) 0) = (record Blake3::Words16 {v0 := (1454879378 : UInt32), v1 := (1983704324 : UInt32), v2 := (1651481887 : UInt32), v3 := (2458528825 : UInt32), v4 := (2735648039 : UInt32), v5 := (3883111920 : UInt32), v6 := (2320101763 : UInt32), v7 := (638441038 : UInt32), v8 := (2725347761 : UInt32), v9 := (2487954162 : UInt32), v10 := (527445122 : UInt32), v11 := (3679678736 : UInt32), v12 := (3289926050 : UInt32), v13 := (2496849082 : UInt32), v14 := (3790348380 : UInt32), v15 := (2103609139 : UInt32)})),
+  proof: reflexivity{},
+  axioms: [Quot.sound, propext]
+}
+\end{semanticmodule}
+\end{lexlean}

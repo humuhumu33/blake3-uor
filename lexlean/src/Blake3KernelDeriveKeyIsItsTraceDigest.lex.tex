@@ -1,0 +1,14 @@
+\begin{lexlean}{Blake3KernelDeriveKeyIsItsTraceDigest}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3}
+\title{Natural number addition}
+\begin{semanticmodule}
+theorem{
+  name: derive_key_is_its_trace_digest,
+  parameters: [context : Bytes, material : Bytes, outLen : Nat],
+  statement: ((Blake3::deriveKey context material outLen) = (Blake3::digestOf (Blake3::finalTrace (Blake3::update (Blake3::deriveHasher context) material) outLen))),
+  proof: reflexivity{},
+  axioms: [Quot.sound, propext]
+}
+\end{semanticmodule}
+\end{lexlean}
