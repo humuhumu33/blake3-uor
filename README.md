@@ -16,6 +16,31 @@ handwritten Rust.
 
 ## Status
 
+**BLAKE3 in LexLean already works as a hash.** In all three modes, at every
+length, with any output size and incrementally, it matches the official
+vectors and the `blake3` crate (B3-01 to B3-04).
+
+| ID | What is checked | Evidence |
+| --- | --- | --- |
+| B3-01 | All 35 official BLAKE3 1.8.7 vectors in `hash`, `keyed_hash` and `derive_key`, 131 bytes of extended output each, and the hex digest | [official.rs](crates/blake3-check/tests/official.rs), [test_vectors.json](oracles/blake3-1.8.7/test_vectors.json) |
+| B3-02 | Equal to the `blake3` crate 1.8.7 in all three modes at every block, chunk and tree boundary from 0 to 102,400 bytes, output lengths 0 to 1,031 bytes | [differential.rs](crates/blake3-check/tests/differential.rs) |
+| B3-03 | Incremental hashing (start, one update per piece, finalize) equals one-shot for 627 splits, all three modes | same |
+| B3-04 | A keyed-hash key that is not 32 bytes is refused as `keyLength n` | same |
+
+"Every length" and "any output size" mean every boundary class the tests cover,
+not a proof over all lengths: the kernel theorems prove official digests only
+for inputs of at most two compressions. The definitions are in
+[CONFORMANCE.md](CONFORMANCE.md) and the run is recorded in
+[docs/blake3-verification.md](docs/blake3-verification.md#status). Run them with
+`cargo test -p blake3-check --test official --test differential`.
+
+Limits, kept visible: SIMD, threads, file I/O and the PrismPM SDK binding are
+not in LexLean or not here. `checkTrace` and the phase 1 and phase 2 analysis
+roots run only in the Prism image's engine, not as certified Rust (`sliceOf`
+and `sliceCheck` are certified Rust). Throughput figures are measured, not
+claimed. The full list is in
+[What is not LexLean](docs/blake3-verification.md#what-is-not-lexlean-or-not-certified-rust).
+
 The export reproduces every official BLAKE3 vector and agrees with the
 `blake3` crate on a seeded boundary corpus. Sixteen kernel theorems hold: the
 digest and every compression output are projections of the trace for every
