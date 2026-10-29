@@ -172,10 +172,10 @@ not depend on the values.
 ## The Prism image (`OPEN-B3-PRISM-IMAGE`)
 
 `prism/Blake3Image.lex.tex` flattens the core, the stdlib's Sha256 (renamed
-`sha…`), the trace module and the reverse module into the one file the image
+`sha…`), the trace, reverse, slice and analysis modules into the one file the image
 builder reads; its roots are the five hash roots, `acceptance`, `traceFile`,
 `traceAddress`, `checkTrace`, and the phase-1 roots `unmix`, `stepRoundTrip`,
-`prevAgrees`, `cursorMove` and `seekStep`. Built and checked with the prism-browser-runtime tooling (outside
+`prevAgrees`, `cursorMove` and `seekStep`, and the phase-2 roots. Built and checked with the prism-browser-runtime tooling (outside
 this repository), under WSL node 22 with its 2 GB runtime twin. The image's
 runtime blobs (no compiler) are committed under `prism/registry/` so the tests
 can run `checkTrace`; nothing was pushed to any registry.
@@ -184,8 +184,10 @@ The committed image is `f20bd6c0a76c6a1020e448140791f98dfa133257ae251ed8ddbbb36b
 (`prism/IMAGE`): `a8f22054…` below plus the phase-2 roots `sliceOf`,
 `sliceCheck`, `diffTrace`, `diffTraceBack`, `diffReach`, `taintRound`,
 `fullTaintSteps` and `wordDiffusion` (22 programs), every earlier layer
-byte-identical. B3-17 to B3-19 run its roots; its `prism.mjs verify` was cut
-short twice when WSL restarted (C: had 1.5 GB free) and has not completed.
+byte-identical. B3-17 to B3-19 run its roots. `prism.mjs verify f20bd6c0…`:
+PASS on all five lines (every layer hashes to its name; 22 programs load, each
+id = its digest; acceptance vectors 32/32 through `hashHex`; rebuilt from
+source, identical programs; `source_id` and `semantic_id` match), 19.2 min.
 
 Image `a8f220549bda467e995539b45320010505ddb9380aac714c3a0926ba3b3d45ac`:
 `a77f4113…` below plus the phase-1 roots, every earlier layer byte-identical. `prism.mjs verify a8f22054…`: PASS on all five lines (every layer hashes to its name; 14 programs load, each id = its digest; acceptance vectors 32/32 through `hashHex`; rebuilt from source, identical programs; `source_id` and `semantic_id` match), 17.5 min.
