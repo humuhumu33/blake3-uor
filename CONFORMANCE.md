@@ -34,6 +34,10 @@ model does not sanction.
 | `B3-10` | `build` | The same mode, input and output length give byte-identical traces, however the input is split into updates. |
 | `B3-11` | `build` | Identical sub-computations have one address: the first chunk of two different inputs resolves to the same checkpoint and chunk labels. |
 | `B3-12` | `build` | vendor/lexlean-stdlib is LexLean main 6bcc8d598's stdlib byte for byte: its files are exactly lexlean.toml, src/Sha256.lex.tex and src/Text.lex.tex, the listing of their sha256 digests hashes to AUTH-LEXLEAN-STDLIB's checksum, and the trace project's lock pins that manifest. |
+| `B3-13` | `build` | One compression with a known message and CV runs back from its full 16-word output to exactly its initial state (CV, IV words, counter, block length, flags), by a kernel theorem for the empty input and in the image's engine for every root output block of seeded traces; with only 8 output words kept it does not. |
+| `B3-14` | `build` | Each operation's inverse undoes it: subtraction for add and addMsg, the same xor for xor and xorCv, rotate-left by n for rotate-right by n, over edge values and a seeded corpus, in the image's engine. |
+| `B3-15` | `build` | Stepping back by stepBack agrees with replaying forward from the checkpoint at every step of a compression; the cursor moves by bit, op, G, round and compression and stays at the ends; seek returns the step record the word-level trace holds, with its reversible or lossy tag. |
+| `B3-16` | `build` | From a label, the trace's links lead back through parents and chunks to the checkpoints that produced it, and forward to the blobs that consume it. |
 
 ## Cited authorities
 

@@ -37,7 +37,12 @@ Recorded 2026-10-29 on WSL2 Ubuntu (x86_64, AMD Ryzen AI MAX 390, 12 threads,
 | B3-09 checker rejects planted defects | 8 plants, each as its `TraceError` at its offset; another input's trace refused | same | pass |
 | B3-10 determinism | byte-identical traces, whole or split | same | pass |
 | B3-11 shared addresses | first chunk of two inputs: same 16 checkpoint labels and chunk label | same | pass |
-| B3-12 vendored stdlib = upstream | exactly upstream's 3 files; listing digest = `AUTH-LEXLEAN-STDLIB` checksum `0990190f�`; trace lock pins the manifest | `--test vendor` | pass |
+| Reverse project | `Blake3Reverse` and the kernel theorem that one compression (empty input, root flags) runs back exactly to its initial state | `LEXLEAN_VERIFY_WIDTH=1 lexlean verify` in `lexlean-reverse/` | rc 0, 3 modules, `export/attestation-reverse.json` (`e526f5f7…`) |
+| B3-13 run back | 20 root output blocks of seeded traces back to their checkpoints; their 8-word truncations not | `--test reverse` (engine) | pass |
+| B3-14 inverses | 2,624 operations, edge values and seeded words, all five kinds | same | pass |
+| B3-15 back = replay, cursor, seek | 4 compressions agree at all 800 steps; 15 cursor moves; 7 seeks equal the word-level records and tags | same | pass |
+| B3-16 navigation | root → parent → chunk 0 → its first checkpoint; that checkpoint → its chunk and the events; outputs → root checkpoints | same | pass |
+| B3-12 vendored stdlib = upstream | exactly upstream's 3 files; listing digest = `AUTH-LEXLEAN-STDLIB` checksum `0990190f…`; trace lock pins the manifest | `--test vendor` | pass |
 | Engine checks with PrismPM BLAKE3 | 57 checks: acceptance at 0, 64, 1025 B in 3 modes at every level; every DigestSet = PrismPM `blake3.mjs` (commit `d9672958`, sha256 `09a3fb46…`) + node SHA-256; all plants | `node prism/trace-checks.mjs de0a8067… --registry … --blake3 <blake3.mjs>` (an image whose programs other than `acceptance` are byte-identical to `a77f4113…`) | 57/57 PASS, 41 min |
 | Template gates without the SDK | fmt, clippy (also `--all-features`), workspace tests, `cargo deny`, model audits | each `just` slice | pass |
 | `just vv` | needs `prismpm.lock` | `just vv` | red: `prismpm.lock is required` (expected, unbound) |
@@ -61,10 +66,10 @@ A second plant targets the vendored stdlib: the first round constant in
 
 | Gate | Diagnostic | Result |
 | --- | --- | --- |
-| B3-12 (`cargo test -p blake3-check --test vendor`) | `vendor/lexlean-stdlib differs from LexLean 6bcc8d598`, left `sha256:e1bec0c9�`, right `sha256:0990190f�` | rejected |
-| `lexlean lock --check` in `lexlean-trace/` | `LLC0105: source package std is not the package the lock pins: tree_sha256: locked c0be8a51�, found 798bfe45�` | rejected |
+| B3-12 (`cargo test -p blake3-check --test vendor`) | `vendor/lexlean-stdlib differs from LexLean 6bcc8d598`, left `sha256:e1bec0c9…`, right `sha256:0990190f…` | rejected |
+| `lexlean lock --check` in `lexlean-trace/` | `LLC0105: source package std is not the package the lock pins: tree_sha256: locked c0be8a51…, found 798bfe45…` | rejected |
 
-Restored (`git checkout -- vendor/�`): both pass, and the committed tree passes
+Restored (`git checkout -- vendor/…`): both pass, and the committed tree passes
 every gate in the status table.
 
 ## Trace sizes (`OPEN-B3-TRACE-SIZES`)
@@ -113,12 +118,17 @@ construction.
 ## The Prism image (`OPEN-B3-PRISM-IMAGE`)
 
 `prism/Blake3Image.lex.tex` flattens the core, the stdlib's Sha256 (renamed
-`sha…`) and the trace module into the one file the image builder reads; its
-roots are the five hash roots, `acceptance`, `traceFile`, `traceAddress` and
-`checkTrace`. Built and checked with the prism-browser-runtime tooling (outside
+`sha…`), the trace module and the reverse module into the one file the image
+builder reads; its roots are the five hash roots, `acceptance`, `traceFile`,
+`traceAddress`, `checkTrace`, and the phase-1 roots `unmix`, `stepRoundTrip`,
+`prevAgrees`, `cursorMove` and `seekStep`. Built and checked with the prism-browser-runtime tooling (outside
 this repository), under WSL node 22 with its 2 GB runtime twin. The image's
 runtime blobs (no compiler) are committed under `prism/registry/` so the tests
 can run `checkTrace`; nothing was pushed to any registry.
+
+The committed image is `a8f220549bda467e995539b45320010505ddb9380aac714c3a0926ba3b3d45ac`
+(`prism/IMAGE`): `a77f4113…` below plus the phase-1 roots, every earlier
+layer byte-identical. `prism.mjs verify a8f22054…`: PASS on all five lines (every layer hashes to its name; 14 programs load, each id = its digest; acceptance vectors 32/32 through `hashHex`; rebuilt from source, identical programs; `source_id` and `semantic_id` match), 17.5 min.
 
 Image `a77f411367e2513167fe7e006eadef36f621b03104541436ddd4f02e9a091833`:
 

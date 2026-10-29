@@ -29,4 +29,6 @@ criterion/
 /lexlean/.lake/
 /lexlean-trace/.lexlean/
 /lexlean-trace/.lake/
+/lexlean-reverse/.lexlean/
+/lexlean-reverse/.lake/
 __pycache__/

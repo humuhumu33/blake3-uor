@@ -1921,5 +1921,278 @@ definition{
   executable: true,
   production: {effects: [allocation, overflow], targets: [rust-std]}
 }
+
+definition{
+  name: sub32,
+  parameters: [left : UInt32, right : UInt32],
+  result: UInt32,
+  body: (match (prim checked_add (widen left) (4294967296 : UInt64) : (Option UInt64))
+    | Option.some big => (match (prim checked_subtract big (widen right) : (Option UInt64))
+      | Option.some diff => (narrow diff)
+      | Option.none => (0 : UInt32))
+    | Option.none => (0 : UInt32)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: rotl,
+  parameters: [value : UInt32, amount : UInt32],
+  result: UInt32,
+  body: (match (prim checked_subtract (32 : UInt32) amount : (Option UInt32))
+    | Option.some complement => (rotateRight value complement amount)
+    | Option.none => value),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: undo,
+  parameters: [kind : Op, result : UInt32, right : UInt32],
+  result: UInt32,
+  body: (match kind
+    | Op.opAdd => (sub32 result right)
+    | Op.opAddMsg => (sub32 result right)
+    | Op.opXor => (xor result right)
+    | Op.opRor => (rotl result right)
+    | Op.opXorCv => (xor result right)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: roundOf,
+  parameters: [k : Nat],
+  result: Nat,
+  body: (if (k <? 784) then (prim quotient k 112 0 : Nat) else 7),
+  executable: true
+}
+
+definition{
+  name: rowFor,
+  parameters: [k : Nat],
+  result: Row,
+  body: (rowAt (if (k <? 784) then (prim remainder k 112 0 : Nat) else (prim subtract k 672 : Nat))),
+  executable: true
+}
+
+definition{
+  name: operand,
+  parameters: [cv : Cv, m : Words16, st : Words16, k : Nat],
+  result: UInt32,
+  body: (let row : Row := (rowFor k); (match (project row kind)
+    | Op.opAdd => (getWord st (project row source))
+    | Op.opAddMsg => (getWord m (slotWord (roundOf k) (project row source)))
+    | Op.opXor => (getWord st (project row source))
+    | Op.opRor => (amountWord (project row source))
+    | Op.opXorCv => (getCv cv (project row source)))),
+  executable: true
+}
+
+definition{
+  name: stepForward,
+  parameters: [cv : Cv, m : Words16, st : Words16, k : Nat],
+  result: Words16,
+  body: (project (machineStep cv m (record Machine {state := st, out := (record Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)}), log := (nil Step)}) k) state),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: stepBack,
+  parameters: [cv : Cv, m : Words16, st : Words16, k : Nat],
+  result: Words16,
+  body: (let row : Row := (rowFor k); (if ((roundOf k) =? 7) then st else (setWord st (project row dest) (undo (project row kind) (getWord st (project row dest)) (operand cv m st k))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: unfeed,
+  parameters: [out : Words16, cv : Cv],
+  result: Words16,
+  body: (record Words16 {v0 := (xor (project out v0) (xor (project out v8) (project cv h0))), v1 := (xor (project out v1) (xor (project out v9) (project cv h1))), v2 := (xor (project out v2) (xor (project out v10) (project cv h2))), v3 := (xor (project out v3) (xor (project out v11) (project cv h3))), v4 := (xor (project out v4) (xor (project out v12) (project cv h4))), v5 := (xor (project out v5) (xor (project out v13) (project cv h5))), v6 := (xor (project out v6) (xor (project out v14) (project cv h6))), v7 := (xor (project out v7) (xor (project out v15) (project cv h7))), v8 := (xor (project out v8) (project cv h0)), v9 := (xor (project out v9) (project cv h1)), v10 := (xor (project out v10) (project cv h2)), v11 := (xor (project out v11) (project cv h3)), v12 := (xor (project out v12) (project cv h4)), v13 := (xor (project out v13) (project cv h5)), v14 := (xor (project out v14) (project cv h6)), v15 := (xor (project out v15) (project cv h7))}),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: mixBack,
+  parameters: [cv : Cv, m : Words16, s : Words16],
+  result: Words16,
+  body: (second (prim iterate (fun [cv, m] (walk : (Nat * Words16)) => (((first walk) + 1), (stepBack cv m (second walk) (prim subtract 783 (first walk) : Nat)))) 784 (0, s) : (Nat * Words16))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: compressBack,
+  parameters: [out : Words16, cv : Cv, m : Words16],
+  result: Words16,
+  body: (mixBack cv m (unfeed out cv)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: stepTag,
+  parameters: [s : Step, kept : Nat, messageKnown : Bool],
+  result: Nat,
+  body: (if ((project s round) <? 7) then (match (project s op)
+    | Op.opAddMsg => (if messageKnown then 0 else 1)
+    | Op.opAdd => 0
+    | Op.opXor => 0
+    | Op.opRor => 0
+    | Op.opXorCv => 0) else (if (kept <? 16) then 1 else 0)),
+  executable: true
+}
+
+definition{
+  name: wordsSame,
+  parameters: [a : Words16, b : Words16],
+  result: Bool,
+  body: ((prim equal (project a v0) (project b v0) : Bool) && ((prim equal (project a v1) (project b v1) : Bool) && ((prim equal (project a v2) (project b v2) : Bool) && ((prim equal (project a v3) (project b v3) : Bool) && ((prim equal (project a v4) (project b v4) : Bool) && ((prim equal (project a v5) (project b v5) : Bool) && ((prim equal (project a v6) (project b v6) : Bool) && ((prim equal (project a v7) (project b v7) : Bool) && ((prim equal (project a v8) (project b v8) : Bool) && ((prim equal (project a v9) (project b v9) : Bool) && ((prim equal (project a v10) (project b v10) : Bool) && ((prim equal (project a v11) (project b v11) : Bool) && ((prim equal (project a v12) (project b v12) : Bool) && ((prim equal (project a v13) (project b v13) : Bool) && ((prim equal (project a v14) (project b v14) : Bool) && (prim equal (project a v15) (project b v15) : Bool)))))))))))))))),
+  executable: true
+}
+
+structure{
+  name: Address,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: node, type: Nat},
+    {name: step, type: Nat},
+    {name: bit, type: Nat}
+  ]
+}
+
+definition{
+  name: stepAhead,
+  parameters: [a : Address, target : Nat, nodes : Nat],
+  result: Address,
+  body: (if (target <? 800) then (record Address {node := (project a node), step := target, bit := 0}) else (if (((project a node) + 1) <? nodes) then (record Address {node := ((project a node) + 1), step := 0, bit := 0}) else a)),
+  executable: true
+}
+
+definition{
+  name: stepBehind,
+  parameters: [a : Address, target : Nat],
+  result: Address,
+  body: (if (target <? (project a step)) then (record Address {node := (project a node), step := target, bit := 0}) else (if (0 <? (project a node)) then (record Address {node := (prim subtract (project a node) 1 : Nat), step := 784, bit := 0}) else a)),
+  executable: true
+}
+
+definition{
+  name: groupStart,
+  parameters: [a : Address, size : Nat],
+  result: Nat,
+  body: (let own : Nat := (if ((project a step) <? 784) then (prim multiply (prim quotient (project a step) size 0 : Nat) size : Nat) else 784); (if (own <? (project a step)) then own else (if (own =? 784) then (prim subtract 784 size : Nat) else (if (own <? size) then own else (prim subtract own size : Nat))))),
+  executable: true
+}
+
+definition{
+  name: cursorMove,
+  parameters: [a : Address, granularity : Nat, backwards : Bool, nodes : Nat],
+  result: Address,
+  body: (if backwards then (if (granularity =? 0) then (if (0 <? (project a bit)) then (record Address {node := (project a node), step := (project a step), bit := (prim subtract (project a bit) 1 : Nat)}) else (if (0 <? (project a step)) then (record Address {node := (project a node), step := (prim subtract (project a step) 1 : Nat), bit := 31}) else (if (0 <? (project a node)) then (record Address {node := (prim subtract (project a node) 1 : Nat), step := 799, bit := 31}) else a))) else (if (granularity =? 1) then (if (0 <? (project a step)) then (record Address {node := (project a node), step := (prim subtract (project a step) 1 : Nat), bit := 0}) else (if (0 <? (project a node)) then (record Address {node := (prim subtract (project a node) 1 : Nat), step := 799, bit := 0}) else a)) else (if (granularity =? 2) then (stepBehind a (groupStart a 14)) else (if (granularity =? 3) then (stepBehind a (groupStart a 112)) else (if (0 <? (project a node)) then (record Address {node := (prim subtract (project a node) 1 : Nat), step := 0, bit := 0}) else a))))) else (if (granularity =? 0) then (if (((project a bit) + 1) <? 32) then (record Address {node := (project a node), step := (project a step), bit := ((project a bit) + 1)}) else (stepAhead a ((project a step) + 1) nodes)) else (if (granularity =? 1) then (stepAhead a ((project a step) + 1) nodes) else (if (granularity =? 2) then (stepAhead a (if ((project a step) <? 784) then (prim multiply ((prim quotient (project a step) 14 0 : Nat) + 1) 14 : Nat) else 800) nodes) else (if (granularity =? 3) then (stepAhead a (if ((project a step) <? 784) then (prim multiply ((prim quotient (project a step) 112 0 : Nat) + 1) 112 : Nat) else 800) nodes) else (stepAhead a 800 nodes)))))),
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+
+definition{
+  name: opFromCode,
+  parameters: [code : Nat],
+  result: Op,
+  body: (if (code =? 0) then (ctor Op.opAdd) else (if (code =? 1) then (ctor Op.opAddMsg) else (if (code =? 2) then (ctor Op.opXor) else (if (code =? 3) then (ctor Op.opRor) else (ctor Op.opXorCv))))),
+  executable: true
+}
+
+definition{
+  name: kindCodeOf,
+  parameters: [kind : Op],
+  result: Nat,
+  body: (match kind
+    | Op.opAdd => 0
+    | Op.opAddMsg => 1
+    | Op.opXor => 2
+    | Op.opRor => 3
+    | Op.opXorCv => 4),
+  executable: true
+}
+
+definition{
+  name: stepRoundTrip,
+  parameters: [kind : Nat, left : UInt32, right : UInt32],
+  result: Bool,
+  body: (let op : Op := (opFromCode kind); (prim equal (undo op (perform op left right) right) left : Bool)),
+  axioms: [Quot.sound, propext],
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+
+definition{
+  name: unmix,
+  parameters: [chain : Bytes, block : Bytes, out : Bytes],
+  result: Bytes,
+  body: (blockBytes (compressBack (loadBlock out 64 0) (keyWordsOf chain) (loadBlock block 64 0))),
+  axioms: [Quot.sound, propext],
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+
+definition{
+  name: agreeStep,
+  parameters: [cv : Cv, m : Words16, walk : (Nat * (Words16 * Bool))],
+  result: (Nat * (Words16 * Bool)),
+  body: (let k : Nat := (first walk); (let before : Words16 := (first (second walk)); (let after : Words16 := (stepForward cv m before k); ((k + 1), (after, ((second (second walk)) && (wordsSame (stepBack cv m after k) before))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: prevAgrees,
+  parameters: [chain : Bytes, block : Bytes, lo : UInt32, hi : UInt32, len : UInt32, fl : UInt32],
+  result: Bool,
+  body: (let cv : Cv := (keyWordsOf chain); (let m : Words16 := (loadBlock block 64 0); (second (second (prim iterate (fun [cv, m] (walk : (Nat * (Words16 * Bool))) => (agreeStep cv m walk)) 800 (0, ((initialState cv lo hi len fl), true)) : (Nat * (Words16 * Bool))))))),
+  axioms: [Quot.sound, propext],
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+
+definition{
+  name: stepRecord,
+  parameters: [s : Step, tag : Nat],
+  result: Bytes,
+  body: (concatAll (cons (byteOf (wordOfNat (project s round) 8)) (cons (byteOf (wordOfNat (project s g) 8)) (cons (byteOf (wordOfNat (project s index) 8)) (cons (byteOf (wordOfNat (kindCodeOf (project s op)) 8)) (cons (byteOf (wordOfNat (project s dest) 8)) (cons (byteOf (wordOfNat (project s source) 8)) (cons (wordBytes (project s left)) (cons (wordBytes (project s right)) (cons (wordBytes (project s result)) (cons (byteOf (wordOfNat tag 8)) (nil Bytes)))))))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: compressionsOf,
+  parameters: [trace : Trace],
+  result: (List Node),
+  body: (prim list_fold (fun (acc : (List Node)) (event : Event) => (match event
+    | Event.compressed n => (cons n acc)
+    | Event.pushed e depth => acc
+    | Event.popped e depth => acc)) (nil Node) (prim append (project trace prelude) (project trace events) : (List Event)) : (List Node)),
+  executable: true
+}
+
+definition{
+  name: seekStep,
+  parameters: [mode : Mode, pieces : (List Bytes), outLen : Nat, node : Nat, step : Nat],
+  result: (Result Bytes Blake3Error),
+  body: (match (traceOf mode pieces outLen)
+    | Result.ok trace => (ctor Result.ok [Bytes, Blake3Error] (let nodes : (List Node) := (compressionsOf trace); (let count : Nat := (prim length nodes : Nat); (if ((node <? count) && (step <? 800)) then (match (prim index nodes (prim subtract (prim subtract count 1 : Nat) node : Nat) : (Option Node))
+      | Option.some n => (let t : CompressionTrace := (compressTrace (project n chain) (project n block) (project n counterLo) (project n counterHi) (project n blockLen) (project n flags)); (match (prim index (project t log) (prim subtract 799 step : Nat) : (Option Step))
+        | Option.some s => (stepRecord s (stepTag s (if ((project n role) =? 2) then 16 else 8) true))
+        | Option.none => 0x))
+      | Option.none => 0x) else 0x))))
+    | Result.error refused => (ctor Result.error [Bytes, Blake3Error] refused)),
+  axioms: [Quot.sound, propext],
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
 \end{semanticmodule}
 \end{lexlean}

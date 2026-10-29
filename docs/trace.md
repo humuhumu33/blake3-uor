@@ -51,9 +51,9 @@ accepts: a source package is read from a directory of the workspace, `kind`
 `path` and nothing else (SPEC 10.5), so there is nothing to fetch or lock
 remotely. The copy is held to upstream by B3-12: its files must be exactly
 upstream's three, the listing of their sha256 digests must hash to
-`AUTH-LEXLEAN-STDLIB`'s checksum `0990190f…` (reproduce upstream with `git show
+`AUTH-LEXLEAN-STDLIB`'s checksum `0990190fâ€¦` (reproduce upstream with `git show
 6bcc8d598:stdlib/<path> | sha256sum`), and the trace lock must pin its manifest
-(LexLean's own `lock --check` pins the tree, `tree_sha256` `c0be8a51…`).
+(LexLean's own `lock --check` pins the tree, `tree_sha256` `c0be8a51â€¦`).
 
 A step finer than a compression is not a blob. Its address is a path inside its
 compression's blob: `(checkpoint label, round, G index, op index, bit index)`.
@@ -147,11 +147,15 @@ typed `TraceError` naming the offset where it was found.
 | `hash`, `keyedHash`, `deriveKey`, `hashPieces`, `hashHex` | yes, from the core project | Rust (`export/rust-std/blake3_*`), and the image's engine |
 | `traceFile`, `traceAddress` | yes, from the trace project | Rust, and the image's engine |
 | `checkTrace` | **no** | the LexLean calculus engine in the Prism image (`prism/IMAGE`) only |
+| `unmix`, `stepRoundTrip`, `prevAgrees`, `cursorMove`, `seekStep` (phase 1) | **no** | the Prism image's engine only; the module and its kernel theorem are verified in `lexlean-reverse/` |
 
-`checkTrace` is a verified LexLean definition: Lean checks its module and the
+`checkTrace` and the phase-1 roots are verified LexLean definitions: Lean checks its module and the
 engine runs its lowered program, the same program format and engine as every
-other image root (whose program ids equal their Rust packages'). It is not
-certified Rust, and nothing here should be read as saying it is.
+other image root (whose program ids equal their Rust packages'). They are
+not certified Rust, and nothing here should be read as saying they are. The
+phase-1 roots were tried as rust-std exports too: `stepRoundTrip`, whose
+program is a few word operations and whose certificate source is 200 KB, ran
+out of 6 GB like `checkTrace` ([lexlean-issue-draft.md](lexlean-issue-draft.md)).
 
 `checkTrace` has no rust-std export. Its preservation certificate does not
 compile within 11 GB whenever the checker computes a `Nat` from the file's
@@ -182,3 +186,52 @@ roots in one project (two projects, each with its own roots).
 | a trace is deterministic and the same however the input is split | test B3-10 |
 | identical sub-computations share one address | test B3-11 |
 | an add's 32 adder records assemble to the word result, for all operands | replayed by `checkTrace` for every add it reads, and tested; not proved, since LexLean's proof forms have no bit-vector decision |
+
+## Running backwards, the cursor and navigation
+
+**Inverses.** Every step has an inverse given its second operand: subtraction
+modulo 2^32 for add and addMsg, the same xor for xor and xorCv, rotate-left by
+n for rotate-right by n (`undo`). No schedule row writes its own source, so a
+step's second operand is the same before and after it, and `stepBack` turns
+the state after step k into the state before it. The feed-forward is undone
+by `unfeed`: the upper half of the state after round 6 is out[i+8] ^ cv[i],
+the lower half out[i] ^ that. `compressBack (out, cv, m)` runs one compression
+back from its 16 output words, CV and message to its initial state: the CV,
+the IV words, the counter, the block length and the flags. Going backwards is
+inversion with the message and the CV known. Finding an unknown input from a
+digest is infeasible by design (preimage resistance); nothing here attempts
+it.
+
+**Reversible and lossy steps** (`stepTag`): every round step is reversible
+given the message (an addMsg step is lossy when the message is unknown); a
+feed-forward step is reversible only when all 16 output words are kept, which
+holds for root output blocks and not for a chaining value or the default
+32-byte digest, which keep 8.
+
+**Cursor.** An address is (compression in execution order, step 0-799, bit
+0-31). `cursorMove` goes to the next or previous bit, op, G (14 steps), round
+(112 steps; the feed-forward, steps 784-799, is one unit), or compression,
+staying put at either end. `seekStep` returns the step at an address, replayed
+from its compression's checkpoint, as its 18-byte record and its tag.
+`prevAgrees` checks, for one compression, that stepping back with `stepBack`
+gives at every step the state that replaying forward from the checkpoint
+gives. Only checkpoints are stored: the tree-level file, 5.5 MB for 1 MiB
+against 261 MB at word level and 582 MB at bit level
+(docs/blake3-verification.md).
+
+**Navigation.** Every blob names its inputs by label, so from any label the
+trace leads back (a root to its tree node, a parent to its children, a chunk
+to its block checkpoints, an output block to its root checkpoint) and forward
+(to every blob naming it). This is done over the file by the independent
+reader (`crates/blake3-check/src/trace.rs`: `producer`, `consumers`); finer
+addresses inside a checkpoint are `seekStep` paths. Identical sub-computations
+share one label (B3-11).
+
+| Claim | How |
+| --- | --- |
+| one compression runs back exactly to its initial state (empty input, root flags) | kernel theorem by reflexivity, `lexlean-reverse/` |
+| every root output block of seeded traces runs back to its checkpoint; 8 kept words do not | test B3-13, in the engine |
+| `undo` inverts each operation, for all operands | tested over edge values and a seeded corpus (B3-14); not proved: LexLean's proof forms have no bit-vector decision, and `rfl` over free words does not reduce |
+| stepping back agrees with replaying forward at every step | test B3-15, in the engine |
+| the cursor's moves and `seekStep`'s records | test B3-15 against the word-level file |
+| navigation by label | test B3-16 |

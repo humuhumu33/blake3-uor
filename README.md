@@ -7,7 +7,9 @@ chunk counter, `hash`, `keyed_hash` and `derive_key`, output of any length,
 and an incremental hasher as pure functions. The trace serialises at the tree,
 word and bit levels as ADR-015 content blobs (`blake3:` labels and
 `{sha256, blake3}` DigestSets), and `checkTrace` replays one from its finest
-level. No hashing operation is handwritten Rust.
+level. A compression also runs backwards from its full output, given its
+message and CV, and a cursor seeks and steps through any trace by bit, op, G,
+round or compression. No hashing operation is handwritten Rust.
 
 ## Status
 
@@ -31,6 +33,7 @@ until a public SDK release exists to bind. Nothing here substitutes for it.
 | `lexlean/src/Blake3.lex.tex` | The core: the step machine and its word trace, the tree trace, modes, extended output, incremental hasher, hash roots |
 | `lexlean/src/Blake3Kernel*.lex.tex` | One kernel theorem each: projections for every input, official vectors for tiny ones |
 | `lexlean-trace/src/Blake3Trace.lex.tex` | Blobs, DigestSets, the tree/word/bit files, `traceFile`, `traceAddress`, `checkTrace` |
+| `lexlean-reverse/src/Blake3Reverse*.lex.tex` | Inverse steps, `compressBack`, the cursor and seek, and the run-back kernel theorem |
 | `vendor/lexlean-stdlib/` | LexLean's stdlib (Sha256), byte for byte from LexLean main `6bcc8d598` |
 | `export/` | The certified packages and attestations both production builds wrote |
 | `crates/blake3-check/` | Tests, the independent trace reader, throughput and trace-size measurements |

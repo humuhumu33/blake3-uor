@@ -399,3 +399,84 @@ pub fn check_against(
         }),
     }
 }
+
+/// Calls roots of the committed Prism image in its engine, in one `node`
+/// process (`prism/calls.mjs`): each call is a root name and its arguments in
+/// the engine's value encoding; the values come back in order. The phase-1
+/// roots run only there (`docs/trace.md`).
+pub fn engine_calls(calls: &[(&str, serde_json::Value)]) -> Vec<serde_json::Value> {
+    use std::io::Write as _;
+    let root = root();
+    let image =
+        std::fs::read_to_string(root.join("prism/IMAGE")).expect("prism/IMAGE names the image");
+    let request: Vec<serde_json::Value> = calls
+        .iter()
+        .map(|(name, args)| serde_json::json!([name, args]))
+        .collect();
+    let mut child = std::process::Command::new("node")
+        .arg(root.join("prism/calls.mjs"))
+        .arg(image.trim())
+        .arg("--registry")
+        .arg(root.join("prism/registry"))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("node runs the image's engine");
+    child
+        .stdin
+        .take()
+        .expect("stdin")
+        .write_all(serde_json::to_string(&request).expect("JSON").as_bytes())
+        .expect("write the calls");
+    let out = child.wait_with_output().expect("the engine finishes");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    serde_json::from_slice(&out.stdout).expect("a JSON array of values")
+}
+
+/// Engine values.
+pub mod value {
+    use serde_json::{json, Value};
+
+    /// `Bytes`.
+    pub fn bytes(data: &[u8]) -> Value {
+        json!({"kind": "bytes", "hex": crate::to_hex(data)})
+    }
+    /// `Nat`.
+    pub fn nat(n: u64) -> Value {
+        json!({"kind": "nat", "value": n.to_string()})
+    }
+    /// `UInt32`.
+    pub fn word(w: u32) -> Value {
+        json!({"kind": "u32", "value": w.to_string()})
+    }
+    /// `Bool`.
+    pub fn boolean(b: bool) -> Value {
+        json!({"kind": "bool", "value": b})
+    }
+    /// A constructor of a document type, with its fields.
+    pub fn adt(index: u64, fields: Vec<Value>) -> Value {
+        json!({"kind": "adt", "constructor": index, "fields": fields})
+    }
+    /// `List`.
+    pub fn list(items: Vec<Value>) -> Value {
+        json!({"kind": "list", "items": items})
+    }
+    /// The bytes of a `Bytes` value.
+    pub fn as_bytes(v: &Value) -> Vec<u8> {
+        crate::from_hex(v["hex"].as_str().expect("a bytes value"))
+    }
+    /// The Nat fields of a constructor value.
+    pub fn fields(v: &Value) -> Vec<u64> {
+        v["fields"]
+            .as_array()
+            .expect("fields")
+            .iter()
+            .map(|f| f["value"].as_str().expect("nat").parse().expect("u64"))
+            .collect()
+    }
+}

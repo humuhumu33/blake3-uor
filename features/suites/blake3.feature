@@ -73,3 +73,27 @@ Feature: blake3
     Given vendor/lexlean-stdlib and the AUTH-LEXLEAN-STDLIB row of model/authorities.toml
     When the suite exercises B3-12
     Then the file set, the listing digest and the lock's manifest pin agree, and a one-byte change is detected
+
+  @B3-13 @build
+  Scenario: One compression with a known message and CV runs back from its full 16-word output to exactly its initial state (CV, IV words, counter, block length, flags), by a kernel theorem for the empty input and in the image's engine for every root output block of seeded traces; with only 8 output words kept it does not.
+    Given root output blocks of seeded traces, their checkpoints, and the same outputs truncated to 8 words
+    When the suite exercises B3-13
+    Then unmix returns each checkpoint's initial state, and not for the truncations
+
+  @B3-14 @build
+  Scenario: Each operation's inverse undoes it: subtraction for add and addMsg, the same xor for xor and xorCv, rotate-left by n for rotate-right by n, over edge values and a seeded corpus, in the image's engine.
+    Given edge values and seeded words for each operation kind
+    When the suite exercises B3-14
+    Then stepRoundTrip holds for every pair
+
+  @B3-15 @build
+  Scenario: Stepping back by stepBack agrees with replaying forward from the checkpoint at every step of a compression; the cursor moves by bit, op, G, round and compression and stays at the ends; seek returns the step record the word-level trace holds, with its reversible or lossy tag.
+    Given checkpoints of a two-chunk trace, cursor moves at boundaries, and sampled addresses
+    When the suite exercises B3-15
+    Then prevAgrees holds, each move lands where expected, and each seek equals the word-level record
+
+  @B3-16 @build
+  Scenario: From a label, the trace's links lead back through parents and chunks to the checkpoints that produced it, and forward to the blobs that consume it.
+    Given a four-chunk tree trace
+    When the suite exercises B3-16
+    Then the root leads to chunk 0's first checkpoint and that checkpoint to its chunk and the events

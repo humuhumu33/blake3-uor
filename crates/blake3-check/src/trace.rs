@@ -183,3 +183,16 @@ pub fn references(blob: &[u8]) -> Vec<[u8; 32]> {
         _ => Vec::new(),
     }
 }
+
+/// The blob a label names, if the trace holds it.
+pub fn producer<'a>(file: &'a TraceFile, label: &[u8; 32]) -> Option<&'a Entry> {
+    file.entries.iter().find(|e| &e.digest_set[..32] == label)
+}
+
+/// Every blob that names a label, in file order.
+pub fn consumers<'a>(file: &'a TraceFile, label: &[u8; 32]) -> Vec<&'a Entry> {
+    file.entries
+        .iter()
+        .filter(|e| references(&e.blob).contains(label))
+        .collect()
+}

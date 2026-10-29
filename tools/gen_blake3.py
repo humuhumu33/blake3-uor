@@ -30,7 +30,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 # a production certificate imports a shared lemma library built from every
 # root of its project, and the hash and trace roots together exceed the 8 GB
 # a verify may use, while each project alone fits.
-PROJECTS = ("lexlean", "lexlean-trace")
+PROJECTS = ("lexlean", "lexlean-trace", "lexlean-reverse")
 SOURCES = ROOT / "lexlean" / "src"
 MODULE = SOURCES / "Blake3.lex.tex"
 VECTORS = ROOT / "oracles" / "blake3-1.8.7" / "test_vectors.json"
@@ -663,6 +663,183 @@ def render_trace(core="Blake3Uor.Blake3::", sha=lambda n: f"LexLeanStd.Sha256::{
     return decls
 
 
+def render_reverse(core="Blake3Uor.Blake3::"):
+    """Phase 1: the step machine run backwards, the cursor, and seek. Every
+    name of the core is qualified; nothing here changes the core. Its roots
+    run in the Prism image's engine: in the reverse project they are
+    ordinary definitions (see docs/trace.md), and the image marks them."""
+    q = lambda n: f"{core}{n}"
+    W16, CV, OP, ROW, STEP, MACH = q("Words16"), q("Cv"), q("Op"), q("Row"), q("Step"), q("Machine")
+    decls = []
+    add = decls.append
+    zeros = record(W16, [(f"v{i}", u32(0)) for i in range(16)])
+
+    # Inverses. add: subtract modulo 2^32; xor: the same xor; rotate right by
+    # n: rotate left by n.
+    add(definition("sub32", ["left : UInt32", "right : UInt32"], "UInt32",
+                   f"(match (prim checked_add ({q('widen')} left) (4294967296 : UInt64) : (Option UInt64))\n"
+                   f"    | Option.some big => (match (prim checked_subtract big ({q('widen')} right) : (Option UInt64))\n"
+                   f"      | Option.some diff => ({q('narrow')} diff)\n      | Option.none => (0 : UInt32))\n"
+                   "    | Option.none => (0 : UInt32))"))
+    add(definition("rotl", ["value : UInt32", "amount : UInt32"], "UInt32",
+                   "(match (prim checked_subtract (32 : UInt32) amount : (Option UInt32))\n"
+                   f"    | Option.some complement => ({q('rotateRight')} value complement amount)\n    | Option.none => value)"))
+    add(definition("undo", ["kind : " + OP, "result : UInt32", "right : UInt32"], "UInt32",
+                   f"(match kind\n    | {OP}.opAdd => (sub32 result right)\n    | {OP}.opAddMsg => (sub32 result right)\n"
+                   f"    | {OP}.opXor => ({q('xor')} result right)\n    | {OP}.opRor => (rotl result right)\n"
+                   f"    | {OP}.opXorCv => ({q('xor')} result right))"))
+    add(definition("roundOf", ["k : Nat"], "Nat", "(if (k <? 784) then (prim quotient k 112 0 : Nat) else 7)", axioms=False))
+    add(definition("rowFor", ["k : Nat"], ROW,
+                   f"({q('rowAt')} (if (k <? 784) then (prim remainder k 112 0 : Nat) else (prim subtract k 672 : Nat)))",
+                   axioms=False))
+    # A step's second operand, as machineStep reads it. No step writes its
+    # own source, so the operand is the same before and after the step.
+    add(definition("operand", ["cv : " + CV, "m : " + W16, "st : " + W16, "k : Nat"], "UInt32",
+                   lets([("row", ROW, "(rowFor k)")],
+                        f"(match (project row kind)\n    | {OP}.opAdd => ({q('getWord')} st (project row source))\n"
+                        f"    | {OP}.opAddMsg => ({q('getWord')} m ({q('slotWord')} (roundOf k) (project row source)))\n"
+                        f"    | {OP}.opXor => ({q('getWord')} st (project row source))\n"
+                        f"    | {OP}.opRor => ({q('amountWord')} (project row source))\n"
+                        f"    | {OP}.opXorCv => ({q('getCv')} cv (project row source)))"), axioms=False))
+    add(definition("stepForward", ["cv : " + CV, "m : " + W16, "st : " + W16, "k : Nat"], W16,
+                   f"(project ({q('machineStep')} cv m (record {MACH} {{state := st, out := {zeros}, log := (nil {STEP})}}) k) state)"))
+    # The state before step k, from the state after it. The feed-forward
+    # steps (k >= 784) write output words, not state.
+    add(definition("stepBack", ["cv : " + CV, "m : " + W16, "st : " + W16, "k : Nat"], W16,
+                   lets([("row", ROW, "(rowFor k)")],
+                        iff("((roundOf k) =? 7)", "st",
+                            f"({q('setWord')} st (project row dest) (undo (project row kind) ({q('getWord')} st (project row dest)) "
+                            "(operand cv m st k)))"))))
+    # The state after round 6, from the 16 output words and the CV: the
+    # upper half is out[i+8] ^ cv[i], the lower out[i] ^ that.
+    upper = {i: f"({q('xor')} (project out v{8 + i}) (project cv h{i}))" for i in range(8)}
+    add(definition("unfeed", ["out : " + W16, "cv : " + CV], W16,
+                   record(W16, [(f"v{i}", f"({q('xor')} (project out v{i}) {upper[i]})") for i in range(8)]
+                          + [(f"v{8 + i}", upper[i]) for i in range(8)])))
+    add(definition("mixBack", ["cv : " + CV, "m : " + W16, "s : " + W16], W16,
+                   "(second (prim iterate (fun [cv, m] (walk : (Nat * " + W16 + ")) => (((first walk) + 1), "
+                   "(stepBack cv m (second walk) (prim subtract 783 (first walk) : Nat)))) 784 (0, s) : (Nat * " + W16 + ")))"))
+    # One compression run backwards: from its 16 output words, its message
+    # and its CV to its initial state (CV, IV words, counter, length, flags).
+    add(definition("compressBack", ["out : " + W16, "cv : " + CV, "m : " + W16], W16, "(mixBack cv m (unfeed out cv))"))
+    # Reversible (0) or lossy (1): a round step needs the message only for
+    # addMsg; a feed-forward step needs all 16 output words.
+    add(definition("stepTag", ["s : " + STEP, "kept : Nat", "messageKnown : Bool"], "Nat",
+                   iff("((project s round) <? 7)",
+                       f"(match (project s op)\n    | {OP}.opAddMsg => (if messageKnown then 0 else 1)\n"
+                       f"    | {OP}.opAdd => 0\n    | {OP}.opXor => 0\n    | {OP}.opRor => 0\n    | {OP}.opXorCv => 0)",
+                       "(if (kept <? 16) then 1 else 0)"), axioms=False))
+    add(definition("wordsSame", ["a : " + W16, "b : " + W16], "Bool",
+                   conj(*[f"(prim equal (project a v{i}) (project b v{i}) : Bool)" for i in range(16)]), axioms=False))
+
+    # The cursor: an address is (compression, step, bit); a move goes to the
+    # next or previous unit of a granularity (0 bit, 1 op, 2 G, 3 round,
+    # 4 compression), staying put at either end of the trace.
+    add(structure("Address", [("node", "Nat"), ("step", "Nat"), ("bit", "Nat")]))
+    addr = lambda n, s, b: f"(record Address {{node := {n}, step := {s}, bit := {b}}})"
+    here = "a"
+    add(definition("stepAhead", ["a : Address", "target : Nat", "nodes : Nat"], "Address",
+                   iff("(target <? 800)", addr("(project a node)", "target", "0"),
+                       iff("(((project a node) + 1) <? nodes)", addr("((project a node) + 1)", "0", "0"), here)), axioms=False))
+    add(definition("stepBehind", ["a : Address", "target : Nat"], "Address",
+                   iff("(target <? (project a step))", addr("(project a node)", "target", "0"),
+                       iff("(0 <? (project a node))", addr("(prim subtract (project a node) 1 : Nat)", "784", "0"), here)),
+                   axioms=False))
+
+    forward = {
+        "0": iff("(((project a bit) + 1) <? 32)", addr("(project a node)", "(project a step)", "((project a bit) + 1)"),
+                 "(stepAhead a ((project a step) + 1) nodes)"),
+        "1": "(stepAhead a ((project a step) + 1) nodes)",
+        "2": "(stepAhead a " + iff("((project a step) <? 784)",
+                                   "(prim multiply ((prim quotient (project a step) 14 0 : Nat) + 1) 14 : Nat)", "800") + " nodes)",
+        "3": "(stepAhead a " + iff("((project a step) <? 784)",
+                                   "(prim multiply ((prim quotient (project a step) 112 0 : Nat) + 1) 112 : Nat)", "800") + " nodes)",
+        "4": "(stepAhead a 800 nodes)",
+    }
+    backward = {
+        "0": iff("(0 <? (project a bit))", addr("(project a node)", "(project a step)", "(prim subtract (project a bit) 1 : Nat)"),
+                 iff("(0 <? (project a step))", addr("(project a node)", "(prim subtract (project a step) 1 : Nat)", "31"),
+                     iff("(0 <? (project a node))", addr("(prim subtract (project a node) 1 : Nat)", "799", "31"), here))),
+        "1": iff("(0 <? (project a step))", addr("(project a node)", "(prim subtract (project a step) 1 : Nat)", "0"),
+                 iff("(0 <? (project a node))", addr("(prim subtract (project a node) 1 : Nat)", "799", "0"), here)),
+        "2": f"(stepBehind a (groupStart a 14))",
+        "3": f"(stepBehind a (groupStart a 112))",
+        "4": iff("(0 <? (project a node))", addr("(prim subtract (project a node) 1 : Nat)", "0", "0"), here),
+    }
+    # The start of the unit before the one holding `a` (a G is 14 steps, a
+    # round 112; the feed-forward, steps 784 to 799, is one unit of each).
+    add(definition("groupStart", ["a : Address", "size : Nat"], "Nat",
+                   lets([("own", "Nat", f"(if ((project a step) <? 784) then (prim multiply (prim quotient (project a step) size 0 : Nat) size : Nat) else 784)")],
+                        iff("(own <? (project a step))", "own",
+                            iff("(own =? 784)", "(prim subtract 784 size : Nat)",
+                                iff("(own <? size)", "own", "(prim subtract own size : Nat)")))), axioms=False))
+    body = forward["4"]
+    for g in ("3", "2", "1", "0"):
+        body = iff(f"(granularity =? {g})", forward[g], body)
+    back_body = backward["4"]
+    for g in ("3", "2", "1", "0"):
+        back_body = iff(f"(granularity =? {g})", backward[g], back_body)
+    add(definition("cursorMove", ["a : Address", "granularity : Nat", "backwards : Bool", "nodes : Nat"], "Address",
+                   iff("backwards", back_body, body), axioms=False))
+
+    # Roots for the tests.
+    add(definition("opFromCode", ["code : Nat"], OP,
+                   iff("(code =? 0)", f"(ctor {OP}.opAdd)", iff("(code =? 1)", f"(ctor {OP}.opAddMsg)",
+                       iff("(code =? 2)", f"(ctor {OP}.opXor)", iff("(code =? 3)", f"(ctor {OP}.opRor)", f"(ctor {OP}.opXorCv)")))),
+                   axioms=False))
+    add(definition("kindCodeOf", ["kind : " + OP], "Nat",
+                   "(match kind\n" + "\n".join(f"    | {OP}.{o} => {i}" for i, o in enumerate(OPS)) + ")", axioms=False))
+    add(definition("stepRoundTrip", ["kind : Nat", "left : UInt32", "right : UInt32"], "Bool",
+                   lets([("op", OP, "(opFromCode kind)")],
+                        f"(prim equal (undo op ({q('perform')} op left right) right) left : Bool)")))
+    words = lambda b: f"({q('loadBlock')} {b} 64 0)"
+    add(definition("unmix", ["chain : Bytes", "block : Bytes", "out : Bytes"], "Bytes",
+                   f"({q('blockBytes')} (compressBack {words('out')} ({q('keyWordsOf')} chain) {words('block')}))"))
+    # One step of the agreement check, a named function: the loop closure
+    # only calls it, since large calls written inside a loop closure inflate
+    # the export certificate.
+    add(definition("agreeStep", ["cv : " + CV, "m : " + W16, "walk : (Nat * (" + W16 + " * Bool))"], "(Nat * (" + W16 + " * Bool))",
+                   lets([("k", "Nat", "(first walk)"), ("before", W16, "(first (second walk))"),
+                         ("after", W16, "(stepForward cv m before k)")],
+                        "((k + 1), (after, ((second (second walk)) && (wordsSame (stepBack cv m after k) before))))")))
+    # Moving back one step by stepBack agrees with replaying forward from the
+    # checkpoint, at every step of the compression.
+    add(definition("prevAgrees", ["chain : Bytes", "block : Bytes", "lo : UInt32", "hi : UInt32", "len : UInt32", "fl : UInt32"],
+                   "Bool",
+                   lets([("cv", CV, f"({q('keyWordsOf')} chain)"), ("m", W16, words("block"))],
+                        "(second (second (prim iterate (fun [cv, m] (walk : (Nat * (" + W16 + " * Bool))) => (agreeStep cv m walk)) "
+                        f"800 (0, (({q('initialState')} cv lo hi len fl), true)) : (Nat * ({W16} * Bool)))))")))
+    u8 = lambda n: f"({q('byteOf')} ({q('wordOfNat')} {n} 8))"
+    add(definition("stepRecord", ["s : " + STEP, "tag : Nat"], "Bytes",
+                   f"({q('concatAll')} {blist([u8('(project s round)'), u8('(project s g)'), u8('(project s index)'), u8('(kindCodeOf (project s op))'), u8('(project s dest)'), u8('(project s source)'), '(' + q('wordBytes') + ' (project s left))', '(' + q('wordBytes') + ' (project s right))', '(' + q('wordBytes') + ' (project s result))', u8('tag')])})"))
+    add(definition("compressionsOf", ["trace : " + q("Trace")], f"(List {q('Node')})",
+                   f"(prim list_fold (fun (acc : (List {q('Node')})) (event : {q('Event')}) => (match event\n"
+                   f"    | {q('Event')}.compressed n => (cons n acc)\n    | {q('Event')}.pushed e depth => acc\n"
+                   f"    | {q('Event')}.popped e depth => acc)) (nil {q('Node')}) "
+                   f"(prim append (project trace prelude) (project trace events) : (List {q('Event')})) : (List {q('Node')}))",
+                   axioms=False))
+    # Seek: the step at (compression, step) of the trace of (mode, pieces,
+    # outLen), as its 18-byte record and a reversibility tag, replayed from
+    # the compression's checkpoint; empty when there is no such step.
+    add(definition("seekStep", ["mode : " + q("Mode"), "pieces : (List Bytes)", "outLen : Nat", "node : Nat", "step : Nat"],
+                   f"(Result Bytes {q('Blake3Error')})",
+                   f"(match ({q('traceOf')} mode pieces outLen)\n"
+                   f"    | Result.ok trace => (ctor Result.ok [Bytes, {q('Blake3Error')}] "
+                   + lets([("nodes", f"(List {q('Node')})", "(compressionsOf trace)"), ("count", "Nat", "(prim length nodes : Nat)")],
+                          iff("((node <? count) && (step <? 800))",
+                              f"(match (prim index nodes (prim subtract (prim subtract count 1 : Nat) node : Nat) : (Option {q('Node')}))\n"
+                              "      | Option.some n => "
+                              + lets([("t", q("CompressionTrace"),
+                                       f"({q('compressTrace')} (project n chain) (project n block) (project n counterLo) "
+                                       "(project n counterHi) (project n blockLen) (project n flags))")],
+                                     f"(match (prim index (project t log) (prim subtract 799 step : Nat) : (Option {STEP}))\n"
+                                     "        | Option.some s => (stepRecord s (stepTag s (if ((project n role) =? 2) then 16 else 8) true))\n"
+                                     "        | Option.none => 0x)")
+                              + "\n      | Option.none => 0x)", "0x"))
+                   + f")\n    | Result.error refused => (ctor Result.error [Bytes, {q('Blake3Error')}] refused))"))
+    return decls
+
+
 def render():
     """Every module of the project, by file name: the model and its theorems."""
     key, context, cases = load_vectors()
@@ -1107,6 +1284,22 @@ def render():
         "\\importmodule{LexLeanStd.Sha256}\n\\title{Natural number addition}\n\\begin{semanticmodule}\n"
         + "\n".join(render_trace()) + "\\end{semanticmodule}\n\\end{lexlean}\n")
 
+    # Phase 1: the reverse project, with its own roots so the core and
+    # trace exports stay as they are.
+    modules["lexlean-reverse/src/Blake3Reverse.lex.tex"] = (
+        "\\begin{lexlean}{Blake3Reverse}\n\\useglossary{lexlean.std.nat@1.2.0}\n\\importmodule{Blake3Uor.Blake3}\n"
+        "\\title{Natural number addition}\n\\begin{semanticmodule}\n"
+        + "\n".join(render_reverse()) + "\\end{semanticmodule}\n\\end{lexlean}\n")
+    zero = record("Blake3Uor.Blake3::Words16", [(f"v{i}", u32(0)) for i in range(16)])
+    runs_back = theorem("compression_runs_back_to_its_start",
+                        f"((Blake3Reverse::compressBack (Blake3Uor.Blake3::compress (Blake3Uor.Blake3::iv) {zero} {u32(0)} {u32(0)} "
+                        f"{u32(0)} {u32(11)}) (Blake3Uor.Blake3::iv) {zero}) = (Blake3Uor.Blake3::initialState (Blake3Uor.Blake3::iv) "
+                        f"{u32(0)} {u32(0)} {u32(0)} {u32(11)}))")
+    modules["lexlean-reverse/src/Blake3ReverseKernelRunsBack.lex.tex"] = (
+        "\\begin{lexlean}{Blake3ReverseKernelRunsBack}\n\\useglossary{lexlean.std.nat@1.2.0}\n"
+        "\\importmodule{Blake3Uor.Blake3}\n\\importmodule{Blake3Reverse}\n\\title{Natural number addition}\n"
+        "\\begin{semanticmodule}\n" + runs_back + "\\end{semanticmodule}\n\\end{lexlean}\n")
+
     # Reflexivity theorems against the official vectors, each at most two
     # compressions (a sixteen-compression rfl exhausts 8 GB). Bigger inputs
     # are held by the differential in crates/blake3-check. One theorem per
@@ -1177,7 +1370,7 @@ def render():
 IMAGE = ROOT / "prism" / "Blake3Image.lex.tex"
 IMAGE_MAX_LEN = 8193
 IMAGE_ROOTS = {"hash", "hashHex", "keyedHash", "deriveKey", "hashPieces", "acceptance", "traceFile", "traceAddress",
-               "checkTrace"}
+               "checkTrace", "cursorMove", "prevAgrees", "seekStep", "stepRoundTrip", "unmix"}
 
 
 def blocks(module):
@@ -1192,7 +1385,7 @@ def render_image(core_module):
     core, the stdlib's Sha256 under `sha` names, and the trace module, with
     the image's roots marked production and every theorem left out."""
     stdlib = (ROOT / "vendor" / "lexlean-stdlib" / "src" / "Sha256.lex.tex").read_text()
-    ours = blocks(core_module) + render_trace(core="", sha=lambda n: "sha" + n[0].upper() + n[1:])
+    ours = blocks(core_module) + render_trace(core="", sha=lambda n: "sha" + n[0].upper() + n[1:]) + render_reverse(core="")
     taken = {m.group(1) for b in ours for m in [re.match(r"\w+\{\s*name: (\w+),", b)] if m}
     sha_blocks = [b for b in blocks(stdlib) if not b.startswith("theorem{")]
     own = {re.match(r"\w+\{\s*name: (\w+),", b).group(1) for b in sha_blocks}
