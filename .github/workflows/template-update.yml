@@ -110,8 +110,7 @@ jobs:
             --workdir /workspace \
             "$SDK_IMAGE" \
             prismpm --json template update --sdk-image "$SDK_IMAGE" --template-revision "$TEMPLATE_REVISION")
-          printf 'UPDATE %s
-' "$update"
+          echo "UPDATE $update"
           git status --short
           docker run --rm --interactive --network none --cap-drop ALL \
             --security-opt no-new-privileges --entrypoint node "$SDK_IMAGE" -e \
