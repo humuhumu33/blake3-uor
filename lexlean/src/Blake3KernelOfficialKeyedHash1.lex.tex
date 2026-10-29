@@ -6,7 +6,7 @@
 theorem{
   name: official_keyed_hash_1,
   parameters: [],
-  statement: ((Blake3::rootWords (Blake3::finalOutput (Blake3::update (Blake3::hasherWith (Blake3::keyWordsOf 0x77686174732074686520456c7669736820776f726420666f7220667269656e64) (Blake3::flagKeyedHash)) 0x00)) 0) = (record Blake3::Words16 {v0 := (3749214317 : UInt32), v1 := (1447571455 : UInt32), v2 := (328258357 : UInt32), v3 := (1340181031 : UInt32), v4 := (3233305620 : UInt32), v5 := (1272160931 : UInt32), v6 := (574139329 : UInt32), v7 := (1539932298 : UInt32), v8 := (1237346405 : UInt32), v9 := (809568518 : UInt32), v10 := (685046534 : UInt32), v11 := (1322336235 : UInt32), v12 := (265901687 : UInt32), v13 := (1601348723 : UInt32), v14 := (2071925933 : UInt32), v15 := (483790839 : UInt32)})),
+  statement: ((Blake3::rootWordsAt (Blake3::finalTrace (Blake3::update (Blake3::hasherWith (Blake3::keyWordsOf 0x77686174732074686520456c7669736820776f726420666f7220667269656e64) (Blake3::flagKeyedHash)) 0x00) 64) 0) = (record Blake3::Words16 {v0 := (3749214317 : UInt32), v1 := (1447571455 : UInt32), v2 := (328258357 : UInt32), v3 := (1340181031 : UInt32), v4 := (3233305620 : UInt32), v5 := (1272160931 : UInt32), v6 := (574139329 : UInt32), v7 := (1539932298 : UInt32), v8 := (1237346405 : UInt32), v9 := (809568518 : UInt32), v10 := (685046534 : UInt32), v11 := (1322336235 : UInt32), v12 := (265901687 : UInt32), v13 := (1601348723 : UInt32), v14 := (2071925933 : UInt32), v15 := (483790839 : UInt32)})),
   proof: reflexivity{},
   axioms: [Quot.sound, propext]
 }

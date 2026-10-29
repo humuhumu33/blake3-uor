@@ -26,4 +26,9 @@ statement = "Single-thread throughput of the exported blake3_hash package agains
 [[claim]]
 id = "OPEN-B3-PRISM-IMAGE"
 level = "open"
-statement = "A local Prism image of lexlean/src/Blake3.lex.tex, built and checked with the prism-browser-runtime tooling outside this repository, as reported in docs/blake3-verification.md."
+statement = "A local Prism image of prism/Blake3Image.lex.tex (the core, the stdlib Sha256 and the trace module in one file), built and checked with the prism-browser-runtime tooling outside this repository, as reported in docs/blake3-verification.md."
+
+[[claim]]
+id = "OPEN-B3-TRACE-SIZES"
+level = "open"
+statement = "Sizes of the serialised trace at the tree, word and bit levels for 64 B, 1 KiB and 1 MiB inputs, as reported by `cargo run --release -p blake3-check --bin trace_sizes` in docs/blake3-verification.md."

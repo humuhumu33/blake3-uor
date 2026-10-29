@@ -2,7 +2,10 @@
 // Run a local Prism image of lexlean/src/Blake3.lex.tex on every official
 // BLAKE3 vector, in all three modes, inside the image's own engine.
 //
-//   node prism/run-vectors.mjs <image sha256> --registry <dir> [--vectors <test_vectors.json>]
+//   node prism/run-vectors.mjs <image sha256> --registry <dir> [--vectors <test_vectors.json>] [--max-len <bytes>]
+//
+// --max-len runs only the cases up to that input length and says how many it
+// left out; the certified Rust export runs every case (B3-01).
 //
 // The image and its registry come from the prism-browser-runtime tooling
 // (`prism.mjs build`). This script trusts neither: every blob is checked
@@ -23,6 +26,7 @@ const flag = (name, fallback) => {
 const here = dirname(fileURLToPath(import.meta.url));
 const registry = flag("registry");
 const vectorsPath = flag("vectors", join(here, "..", "oracles", "blake3-1.8.7", "test_vectors.json"));
+const maxLen = Number(flag("max-len", "Infinity"));
 const [image] = argv;
 if (!registry || !/^[0-9a-f]{64}$/.test(image ?? "")) {
   console.error("usage: run-vectors.mjs <image sha256> --registry <dir> [--vectors <file>]");
@@ -92,8 +96,13 @@ const context = bytes(hexOf(raw.context_string));
 let passed = 0;
 let failed = 0;
 const started = Date.now();
+let leftOut = 0;
 for (const c of raw.cases) {
   if (!same(Object.keys(c).sort(), ["derive_key", "hash", "input_len", "keyed_hash"])) throw new Error("unexpected case shape");
+  if (c.input_len > maxLen) {
+    leftOut++;
+    continue;
+  }
   for (const mode of ["hash", "keyed_hash", "derive_key"]) {
     if (!/^[0-9a-f]{262}$/.test(c[mode])) throw new Error(`input_len ${c.input_len} ${mode}: not 131 hex bytes`);
   }
@@ -116,5 +125,6 @@ for (const c of raw.cases) {
   }
 }
 const seconds = ((Date.now() - started) / 1000).toFixed(1);
-console.log(`${failed ? "FAIL" : "PASS"}  image sha256:${image}: ${passed}/${passed + failed} official outputs (35 cases x hash, keyed_hash, derive_key, 131 bytes each) in ${seconds} s`);
+const scope = leftOut ? `${raw.cases.length - leftOut} cases up to ${maxLen} B (${leftOut} longer cases left out)` : `${raw.cases.length} cases`;
+console.log(`${failed ? "FAIL" : "PASS"}  image sha256:${image}: ${passed}/${passed + failed} official outputs (${scope} x hash, keyed_hash, derive_key, 131 bytes each) in ${seconds} s`);
 process.exit(failed ? 1 : 0);

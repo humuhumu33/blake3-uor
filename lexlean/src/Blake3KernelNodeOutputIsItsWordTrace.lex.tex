@@ -1,0 +1,14 @@
+\begin{lexlean}{Blake3KernelNodeOutputIsItsWordTrace}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3}
+\title{Natural number addition}
+\begin{semanticmodule}
+theorem{
+  name: node_output_is_its_word_trace,
+  parameters: [p : Blake3::Pending],
+  statement: ((project (Blake3::run p) output) = (Blake3::compressOut (Blake3::compressTrace (project p chain) (project p block) (Blake3::counterLow (project p counter)) (Blake3::counterHigh (project p counter)) (project p blockLen) (project p flags)))),
+  proof: reflexivity{},
+  axioms: [Quot.sound, propext]
+}
+\end{semanticmodule}
+\end{lexlean}

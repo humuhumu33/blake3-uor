@@ -5,3 +5,9 @@ lexlean/lexlean.lock -text
 lexlean/production-request.json -text
 export/** -text
 oracles/** -text
+prism/registry/** -text
+prism/IMAGE -text
+lexlean-trace/production-request.json -text
+lexlean-trace/lexlean.lock -text
+lexlean-workspace.toml -text
+vendor/** -text

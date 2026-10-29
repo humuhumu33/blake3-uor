@@ -26,7 +26,13 @@ model does not sanction.
 | `B3-02` | `build` | The exported packages equal the blake3 crate 1.8.7 in all three modes on a seeded corpus whose lengths cover every block, chunk and tree boundary from 0 to 102400 bytes, at output lengths from 0 to 1031 bytes. |
 | `B3-03` | `build` | Incremental hashing (start, one update per piece, finalize) equals one-shot hashing for every tested split of every corpus input, in all three modes. |
 | `B3-04` | `build` | A keyed-hash key that is not 32 bytes is refused as Blake3Error.keyLength carrying its length, by keyedHash and by hashPieces. |
-| `B3-05` | `build` | The committed packages are the ones a verified LexLean build exported: each package file hashes to its provenance record, each package names the attested semantic identity, and the attestation records all eleven kernel theorems with exactly the axioms Quot.sound and propext. |
+| `B3-05` | `build` | The committed packages are the ones verified LexLean builds exported: each package file hashes to its provenance record, each package names the semantic identity its project's attestation verified, and the core attestation records all sixteen kernel theorems with exactly the axioms Quot.sound and propext. |
+| `B3-06` | `build` | The trace the certified traceFile writes records, in its root blob, the digest BLAKE3 computes and the input's ADR-015 DigestSet, and the trace's address is that root blob's DigestSet, in all three modes. |
+| `B3-07` | `build` | Every DigestSet in a trace, at every level, equals BLAKE3 and SHA-256 of its blob as the blake3 and sha2 crates compute them, and every label a blob names belongs to a blob before it. |
+| `B3-08` | `build` | checkTrace, run by the LexLean calculus engine in the committed Prism image, accepts every real trace at the tree, word and bit levels and returns the address traceAddress computes. |
+| `B3-09` | `build` | checkTrace rejects a flipped operation result, a flipped carry bit, a wrong permutation index, a reordered step, a wrong flag with its label kept or relabelled, a changed checkpoint with its label kept, and a forged parent link, each as the TraceError that names it; another input's trace is not this input's address. |
+| `B3-10` | `build` | The same mode, input and output length give byte-identical traces, however the input is split into updates. |
+| `B3-11` | `build` | Identical sub-computations have one address: the first chunk of two different inputs resolves to the same checkpoint and chunk labels. |
 
 ## Cited authorities
 
@@ -42,4 +48,5 @@ Never re-derived, vendored, or gated on.
 | --- | --- | --- |
 | `AUTH-BLAKE3-VECTORS` | `some-true` | The official BLAKE3 test vectors are the outputs of BLAKE3 as specified. |
 | `OPEN-B3-THROUGHPUT` | `open` | Single-thread throughput of the exported blake3_hash package against the blake3 crate's portable and SIMD builds, as reported by `cargo run --release -p blake3-check --bin throughput` in docs/blake3-verification.md. |
-| `OPEN-B3-PRISM-IMAGE` | `open` | A local Prism image of lexlean/src/Blake3.lex.tex, built and checked with the prism-browser-runtime tooling outside this repository, as reported in docs/blake3-verification.md. |
+| `OPEN-B3-PRISM-IMAGE` | `open` | A local Prism image of prism/Blake3Image.lex.tex (the core, the stdlib Sha256 and the trace module in one file), built and checked with the prism-browser-runtime tooling outside this repository, as reported in docs/blake3-verification.md. |
+| `OPEN-B3-TRACE-SIZES` | `open` | Sizes of the serialised trace at the tree, word and bit levels for 64 B, 1 KiB and 1 MiB inputs, as reported by `cargo run --release -p blake3-check --bin trace_sizes` in docs/blake3-verification.md. |

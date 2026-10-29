@@ -26,6 +26,8 @@ blake3_hash_hex = { workspace = true }
 blake3_keyed_hash = { workspace = true }
 blake3_derive_key = { workspace = true }
 blake3_hash_pieces = { workspace = true }
+blake3_trace_file = { workspace = true }
+blake3_trace_address = { workspace = true }
 # The oracle. Its version is the release whose test vectors are committed in
 # `oracles/blake3-1.8.7/`.
 blake3 = "=1.8.7"

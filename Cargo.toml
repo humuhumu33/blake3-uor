@@ -31,6 +31,8 @@ blake3_hash_hex = { version = "0.1.0", path = "export/rust-std/blake3_hash_hex" 
 blake3_keyed_hash = { version = "0.1.0", path = "export/rust-std/blake3_keyed_hash" }
 blake3_derive_key = { version = "0.1.0", path = "export/rust-std/blake3_derive_key" }
 blake3_hash_pieces = { version = "0.1.0", path = "export/rust-std/blake3_hash_pieces" }
+blake3_trace_file = { version = "0.1.0", path = "export/rust-std/blake3_trace_file" }
+blake3_trace_address = { version = "0.1.0", path = "export/rust-std/blake3_trace_address" }
 
 [workspace.lints.rust]
 missing_docs = "deny"
@@ -58,4 +60,8 @@ opt-level = 3
 [profile.dev.package.blake3_hash_pieces]
 opt-level = 3
 [profile.dev.package.blake3]
+opt-level = 3
+[profile.dev.package.blake3_trace_file]
+opt-level = 3
+[profile.dev.package.blake3_trace_address]
 opt-level = 3

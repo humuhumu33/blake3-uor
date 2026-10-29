@@ -3,7 +3,7 @@ name = "blake3-uor"
 language = "1.2"
 module_prefix = "Blake3Uor"
 source_roots = ["src"]
-entrypoints = ["src/Blake3.lex.tex", "src/Blake3KernelOfficialDeriveKey0.lex.tex", "src/Blake3KernelOfficialDeriveKey1.lex.tex", "src/Blake3KernelOfficialHash0.lex.tex", "src/Blake3KernelOfficialHash0Block1.lex.tex", "src/Blake3KernelOfficialHash1.lex.tex", "src/Blake3KernelOfficialHash63.lex.tex", "src/Blake3KernelOfficialHash64.lex.tex", "src/Blake3KernelOfficialHash65.lex.tex", "src/Blake3KernelOfficialKeyedHash0.lex.tex", "src/Blake3KernelOfficialKeyedHash1.lex.tex", "src/Blake3KernelSplitUpdateEqualsOneShot.lex.tex"]
+entrypoints = ["src/Blake3.lex.tex", "src/Blake3KernelCompressionIsItsWordTrace.lex.tex", "src/Blake3KernelDeriveKeyIsItsTraceDigest.lex.tex", "src/Blake3KernelHashIsItsTraceDigest.lex.tex", "src/Blake3KernelNodeOutputIsItsWordTrace.lex.tex", "src/Blake3KernelOfficialDeriveKey0.lex.tex", "src/Blake3KernelOfficialDeriveKey1.lex.tex", "src/Blake3KernelOfficialHash0.lex.tex", "src/Blake3KernelOfficialHash0Block1.lex.tex", "src/Blake3KernelOfficialHash1.lex.tex", "src/Blake3KernelOfficialHash63.lex.tex", "src/Blake3KernelOfficialHash64.lex.tex", "src/Blake3KernelOfficialHash65.lex.tex", "src/Blake3KernelOfficialKeyedHash0.lex.tex", "src/Blake3KernelOfficialKeyedHash1.lex.tex", "src/Blake3KernelPiecesAreTheirTraceDigest.lex.tex", "src/Blake3KernelSplitUpdateEqualsOneShot.lex.tex"]
 build_root = ".lexlean"
 lockfile = "lexlean.lock"
 lean_workspace = "."
@@ -14,7 +14,7 @@ package = "lexlean.std.nat"
 kind = "builtin"
 
 [limits]
-max_file_bytes = 4194304
+max_file_bytes = 16777216
 max_total_source_bytes = 67108864
 max_primitive_atoms = 2000000
 max_token_lattice_edges = 4000000

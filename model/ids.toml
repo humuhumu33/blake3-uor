@@ -49,4 +49,40 @@ statement = "A keyed-hash key that is not 32 bytes is refused as Blake3Error.key
 id = "B3-05"
 level = "build"
 suite = "blake3"
-statement = "The committed packages are the ones a verified LexLean build exported: each package file hashes to its provenance record, each package names the attested semantic identity, and the attestation records all eleven kernel theorems with exactly the axioms Quot.sound and propext."
+statement = "The committed packages are the ones verified LexLean builds exported: each package file hashes to its provenance record, each package names the semantic identity its project's attestation verified, and the core attestation records all sixteen kernel theorems with exactly the axioms Quot.sound and propext."
+
+[[id]]
+id = "B3-06"
+level = "build"
+suite = "blake3"
+statement = "The trace the certified traceFile writes records, in its root blob, the digest BLAKE3 computes and the input's ADR-015 DigestSet, and the trace's address is that root blob's DigestSet, in all three modes."
+
+[[id]]
+id = "B3-07"
+level = "build"
+suite = "blake3"
+statement = "Every DigestSet in a trace, at every level, equals BLAKE3 and SHA-256 of its blob as the blake3 and sha2 crates compute them, and every label a blob names belongs to a blob before it."
+
+[[id]]
+id = "B3-08"
+level = "build"
+suite = "blake3"
+statement = "checkTrace, run by the LexLean calculus engine in the committed Prism image, accepts every real trace at the tree, word and bit levels and returns the address traceAddress computes."
+
+[[id]]
+id = "B3-09"
+level = "build"
+suite = "blake3"
+statement = "checkTrace rejects a flipped operation result, a flipped carry bit, a wrong permutation index, a reordered step, a wrong flag with its label kept or relabelled, a changed checkpoint with its label kept, and a forged parent link, each as the TraceError that names it; another input's trace is not this input's address."
+
+[[id]]
+id = "B3-10"
+level = "build"
+suite = "blake3"
+statement = "The same mode, input and output length give byte-identical traces, however the input is split into updates."
+
+[[id]]
+id = "B3-11"
+level = "build"
+suite = "blake3"
+statement = "Identical sub-computations have one address: the first chunk of two different inputs resolves to the same checkpoint and chunk labels."

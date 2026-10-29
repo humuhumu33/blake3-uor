@@ -13,12 +13,15 @@ use std::path::Path;
 use blake3_check::root;
 use serde_json::Value;
 
-const PACKAGES: &[&str] = &[
-    "blake3_derive_key",
-    "blake3_hash",
-    "blake3_hash_hex",
-    "blake3_hash_pieces",
-    "blake3_keyed_hash",
+/// Each exported package and the attestation of the project that exported it.
+const PACKAGES: &[(&str, &str)] = &[
+    ("blake3_derive_key", "attestation.json"),
+    ("blake3_hash", "attestation.json"),
+    ("blake3_hash_hex", "attestation.json"),
+    ("blake3_hash_pieces", "attestation.json"),
+    ("blake3_keyed_hash", "attestation.json"),
+    ("blake3_trace_address", "attestation-trace.json"),
+    ("blake3_trace_file", "attestation-trace.json"),
 ];
 
 fn json(path: &Path) -> Value {
@@ -63,11 +66,10 @@ fn theorems_in_source(root: &Path) -> BTreeSet<String> {
 fn the_export_is_what_a_verified_build_wrote_b3_05() {
     let root = root();
     let export = root.join("export");
-    let attestation = json(&export.join("attestation.json"));
-    assert_eq!(attestation["status"], "verified");
-    let semantic = attestation["semantic_id"].as_str().expect("semantic_id");
-
-    for name in PACKAGES {
+    for (name, attested) in PACKAGES {
+        let attestation = json(&export.join(attested));
+        assert_eq!(attestation["status"], "verified", "{attested}");
+        let semantic = attestation["semantic_id"].as_str().expect("semantic_id");
         let dir = export.join("rust-std").join(name);
         let provenance = json(&dir.join("provenance.json"));
         assert_eq!(provenance["name"], *name);
@@ -89,8 +91,9 @@ fn the_export_is_what_a_verified_build_wrote_b3_05() {
         }
     }
 
+    let attestation = json(&export.join("attestation.json"));
     let theorems = theorems_in_source(&root);
-    assert_eq!(theorems.len(), 11, "eleven kernel theorems");
+    assert_eq!(theorems.len(), 16, "sixteen kernel theorems");
     let declarations = attestation["declarations"]
         .as_array()
         .expect("declarations");
@@ -111,7 +114,7 @@ fn the_export_is_what_a_verified_build_wrote_b3_05() {
         );
     }
     eprintln!(
-        "B3-05: {} packages bound to attested model {semantic}, {} theorems verified",
+        "B3-05: {} packages bound to their attested models, {} theorems verified",
         PACKAGES.len(),
         theorems.len()
     );

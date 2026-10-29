@@ -27,7 +27,43 @@ Feature: blake3
     Then both roots return keyLength with that length, and a 32-byte key is accepted
 
   @B3-05 @build
-  Scenario: The committed packages are the ones a verified LexLean build exported: each package file hashes to its provenance record, each package names the attested semantic identity, and the attestation records all eleven kernel theorems with exactly the axioms Quot.sound and propext.
+  Scenario: The committed packages are the ones verified LexLean builds exported: each package file hashes to its provenance record, each package names the semantic identity its project's attestation verified, and the core attestation records all sixteen kernel theorems with exactly the axioms Quot.sound and propext.
     Given export/rust-std/ and export/attestation.json as lexlean production build wrote them
     When the suite exercises B3-05
     Then every file digest, the semantic identity and every theorem's axioms agree, and one changed byte is detected
+
+  @B3-06 @build
+  Scenario: The trace the certified traceFile writes records, in its root blob, the digest BLAKE3 computes and the input's ADR-015 DigestSet, and the trace's address is that root blob's DigestSet, in all three modes.
+    Given seeded inputs from 0 to 4097 bytes in hash, keyed_hash and derive_key
+    When the suite exercises B3-06
+    Then the root digest equals the blake3 crate's, the input DigestSet equals the crates', and traceAddress equals the root's DigestSet
+
+  @B3-07 @build
+  Scenario: Every DigestSet in a trace, at every level, equals BLAKE3 and SHA-256 of its blob as the blake3 and sha2 crates compute them, and every label a blob names belongs to a blob before it.
+    Given tree, word and bit traces of seeded inputs up to 16384 bytes
+    When the suite exercises B3-07
+    Then each recorded DigestSet equals the blake3 and sha2 crates' over its blob, and each named label precedes its use
+
+  @B3-08 @build
+  Scenario: checkTrace, run by the LexLean calculus engine in the committed Prism image, accepts every real trace at the tree, word and bit levels and returns the address traceAddress computes.
+    Given real traces from traceFile at each level, in each mode
+    When the suite exercises B3-08
+    Then the engine's checkTrace returns each trace's address
+
+  @B3-09 @build
+  Scenario: checkTrace rejects a flipped operation result, a flipped carry bit, a wrong permutation index, a reordered step, a wrong flag with its label kept or relabelled, a changed checkpoint with its label kept, and a forged parent link, each as the TraceError that names it; another input's trace is not this input's address.
+    Given real traces with one planted defect each
+    When the suite exercises B3-09
+    Then the engine's checkTrace refuses each with the TraceError for that defect at its offset
+
+  @B3-10 @build
+  Scenario: The same mode, input and output length give byte-identical traces, however the input is split into updates.
+    Given one input traced whole and split into four updates
+    When the suite exercises B3-10
+    Then the traces are byte for byte the same
+
+  @B3-11 @build
+  Scenario: Identical sub-computations have one address: the first chunk of two different inputs resolves to the same checkpoint and chunk labels.
+    Given two inputs sharing their first 1024 bytes
+    When the suite exercises B3-11
+    Then their first chunk's checkpoint and chunk labels are the same

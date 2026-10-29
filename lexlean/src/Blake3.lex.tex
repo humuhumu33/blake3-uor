@@ -42,62 +42,6 @@ structure{
   ]
 }
 
-structure{
-  name: Quad,
-  type_parameters: [],
-  parameters: [],
-  fields: [
-    {name: qa, type: UInt32},
-    {name: qb, type: UInt32},
-    {name: qc, type: UInt32},
-    {name: qd, type: UInt32}
-  ]
-}
-
-structure{
-  name: Output,
-  type_parameters: [],
-  parameters: [],
-  fields: [
-    {name: chain, type: Cv},
-    {name: block, type: Words16},
-    {name: counter, type: Nat},
-    {name: blockLen, type: UInt32},
-    {name: flags, type: UInt32}
-  ]
-}
-
-structure{
-  name: Hasher,
-  type_parameters: [],
-  parameters: [],
-  fields: [
-    {name: keyWords, type: Cv},
-    {name: modeFlags, type: UInt32},
-    {name: chunkCount, type: Nat},
-    {name: pending, type: Bytes},
-    {name: stack, type: (List Cv)}
-  ]
-}
-
-inductive{
-  name: Mode,
-  type_parameters: [],
-  parameters: [],
-  constructors: [
-    {name: hashMode, fields: []},
-    {name: keyedMode, fields: [Bytes]},
-    {name: deriveMode, fields: [Bytes]}
-  ]
-}
-
-inductive{
-  name: Blake3Error,
-  type_parameters: [],
-  parameters: [],
-  constructors: [{name: keyLength, fields: [Nat]}]
-}
-
 definition{
   name: widen,
   parameters: [value : UInt32],
@@ -171,92 +115,154 @@ definition{
   executable: true
 }
 
+inductive{
+  name: Op,
+  type_parameters: [],
+  parameters: [],
+  constructors: [
+    {name: opAdd, fields: []},
+    {name: opAddMsg, fields: []},
+    {name: opXor, fields: []},
+    {name: opRor, fields: []},
+    {name: opXorCv, fields: []}
+  ]
+}
+
+structure{
+  name: Step,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: round, type: Nat},
+    {name: g, type: Nat},
+    {name: index, type: Nat},
+    {name: op, type: Op},
+    {name: dest, type: Nat},
+    {name: source, type: Nat},
+    {name: left, type: UInt32},
+    {name: right, type: UInt32},
+    {name: result, type: UInt32}
+  ]
+}
+
+structure{
+  name: Row,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: g, type: Nat},
+    {name: index, type: Nat},
+    {name: kind, type: Op},
+    {name: dest, type: Nat},
+    {name: source, type: Nat}
+  ]
+}
+
+structure{
+  name: Machine,
+  type_parameters: [],
+  parameters: [],
+  fields: [{name: state, type: Words16}, {name: out, type: Words16}, {name: log, type: (List Step)}]
+}
+
+structure{
+  name: CompressionTrace,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: chain, type: Cv},
+    {name: block, type: Words16},
+    {name: counterLo, type: UInt32},
+    {name: counterHi, type: UInt32},
+    {name: blockLen, type: UInt32},
+    {name: flags, type: UInt32},
+    {name: log, type: (List Step)}
+  ]
+}
+
 definition{
-  name: gcore,
-  parameters: [a : UInt32, b : UInt32, c : UInt32, d : UInt32, x : UInt32, y : UInt32],
-  result: Quad,
-  body: (let a1 : UInt32 := (add (add a b) x); (let d1 : UInt32 := (rotateRight (xor d a1) (16 : UInt32) (16 : UInt32)); (let c1 : UInt32 := (add c d1); (let b1 : UInt32 := (rotateRight (xor b c1) (12 : UInt32) (20 : UInt32)); (let a2 : UInt32 := (add (add a1 b1) y); (let d2 : UInt32 := (rotateRight (xor d1 a2) (8 : UInt32) (24 : UInt32)); (let c2 : UInt32 := (add c1 d2); (let b2 : UInt32 := (rotateRight (xor b1 c2) (7 : UInt32) (25 : UInt32)); (record Quad {qa := a2, qb := b2, qc := c2, qd := d2}))))))))),
+  name: rotr,
+  parameters: [value : UInt32, amount : UInt32],
+  result: UInt32,
+  body: (match (prim checked_subtract (32 : UInt32) amount : (Option UInt32))
+    | Option.some complement => (rotateRight value amount complement)
+    | Option.none => value),
   axioms: [Quot.sound, propext],
   executable: true
 }
 
 definition{
-  name: g0,
-  parameters: [s : Words16, m : Words16],
-  result: Words16,
-  body: (let q : Quad := (gcore (project s v0) (project s v4) (project s v8) (project s v12) (project m v0) (project m v1)); (record Words16 {v0 := (project q qa), v1 := (project s v1), v2 := (project s v2), v3 := (project s v3), v4 := (project q qb), v5 := (project s v5), v6 := (project s v6), v7 := (project s v7), v8 := (project q qc), v9 := (project s v9), v10 := (project s v10), v11 := (project s v11), v12 := (project q qd), v13 := (project s v13), v14 := (project s v14), v15 := (project s v15)})),
+  name: perform,
+  parameters: [kind : Op, left : UInt32, right : UInt32],
+  result: UInt32,
+  body: (match kind
+    | Op.opAdd => (add left right)
+    | Op.opAddMsg => (add left right)
+    | Op.opXor => (xor left right)
+    | Op.opRor => (rotr left right)
+    | Op.opXorCv => (xor left right)),
   axioms: [Quot.sound, propext],
   executable: true
 }
 
 definition{
-  name: g1,
-  parameters: [s : Words16, m : Words16],
-  result: Words16,
-  body: (let q : Quad := (gcore (project s v1) (project s v5) (project s v9) (project s v13) (project m v2) (project m v3)); (record Words16 {v0 := (project s v0), v1 := (project q qa), v2 := (project s v2), v3 := (project s v3), v4 := (project s v4), v5 := (project q qb), v6 := (project s v6), v7 := (project s v7), v8 := (project s v8), v9 := (project q qc), v10 := (project s v10), v11 := (project s v11), v12 := (project s v12), v13 := (project q qd), v14 := (project s v14), v15 := (project s v15)})),
-  axioms: [Quot.sound, propext],
+  name: rowAt,
+  parameters: [k : Nat],
+  result: Row,
+  body: (if (k <? 64) then (if (k <? 32) then (if (k <? 16) then (if (k <? 8) then (if (k <? 4) then (if (k <? 2) then (if (k <? 1) then (record Row {g := 0, index := 0, kind := (ctor Op.opAdd), dest := 0, source := 4}) else (record Row {g := 0, index := 1, kind := (ctor Op.opAddMsg), dest := 0, source := 0})) else (if (k <? 3) then (record Row {g := 0, index := 2, kind := (ctor Op.opXor), dest := 12, source := 0}) else (record Row {g := 0, index := 3, kind := (ctor Op.opRor), dest := 12, source := 16}))) else (if (k <? 6) then (if (k <? 5) then (record Row {g := 0, index := 4, kind := (ctor Op.opAdd), dest := 8, source := 12}) else (record Row {g := 0, index := 5, kind := (ctor Op.opXor), dest := 4, source := 8})) else (if (k <? 7) then (record Row {g := 0, index := 6, kind := (ctor Op.opRor), dest := 4, source := 12}) else (record Row {g := 0, index := 7, kind := (ctor Op.opAdd), dest := 0, source := 4})))) else (if (k <? 12) then (if (k <? 10) then (if (k <? 9) then (record Row {g := 0, index := 8, kind := (ctor Op.opAddMsg), dest := 0, source := 1}) else (record Row {g := 0, index := 9, kind := (ctor Op.opXor), dest := 12, source := 0})) else (if (k <? 11) then (record Row {g := 0, index := 10, kind := (ctor Op.opRor), dest := 12, source := 8}) else (record Row {g := 0, index := 11, kind := (ctor Op.opAdd), dest := 8, source := 12}))) else (if (k <? 14) then (if (k <? 13) then (record Row {g := 0, index := 12, kind := (ctor Op.opXor), dest := 4, source := 8}) else (record Row {g := 0, index := 13, kind := (ctor Op.opRor), dest := 4, source := 7})) else (if (k <? 15) then (record Row {g := 1, index := 0, kind := (ctor Op.opAdd), dest := 1, source := 5}) else (record Row {g := 1, index := 1, kind := (ctor Op.opAddMsg), dest := 1, source := 2}))))) else (if (k <? 24) then (if (k <? 20) then (if (k <? 18) then (if (k <? 17) then (record Row {g := 1, index := 2, kind := (ctor Op.opXor), dest := 13, source := 1}) else (record Row {g := 1, index := 3, kind := (ctor Op.opRor), dest := 13, source := 16})) else (if (k <? 19) then (record Row {g := 1, index := 4, kind := (ctor Op.opAdd), dest := 9, source := 13}) else (record Row {g := 1, index := 5, kind := (ctor Op.opXor), dest := 5, source := 9}))) else (if (k <? 22) then (if (k <? 21) then (record Row {g := 1, index := 6, kind := (ctor Op.opRor), dest := 5, source := 12}) else (record Row {g := 1, index := 7, kind := (ctor Op.opAdd), dest := 1, source := 5})) else (if (k <? 23) then (record Row {g := 1, index := 8, kind := (ctor Op.opAddMsg), dest := 1, source := 3}) else (record Row {g := 1, index := 9, kind := (ctor Op.opXor), dest := 13, source := 1})))) else (if (k <? 28) then (if (k <? 26) then (if (k <? 25) then (record Row {g := 1, index := 10, kind := (ctor Op.opRor), dest := 13, source := 8}) else (record Row {g := 1, index := 11, kind := (ctor Op.opAdd), dest := 9, source := 13})) else (if (k <? 27) then (record Row {g := 1, index := 12, kind := (ctor Op.opXor), dest := 5, source := 9}) else (record Row {g := 1, index := 13, kind := (ctor Op.opRor), dest := 5, source := 7}))) else (if (k <? 30) then (if (k <? 29) then (record Row {g := 2, index := 0, kind := (ctor Op.opAdd), dest := 2, source := 6}) else (record Row {g := 2, index := 1, kind := (ctor Op.opAddMsg), dest := 2, source := 4})) else (if (k <? 31) then (record Row {g := 2, index := 2, kind := (ctor Op.opXor), dest := 14, source := 2}) else (record Row {g := 2, index := 3, kind := (ctor Op.opRor), dest := 14, source := 16})))))) else (if (k <? 48) then (if (k <? 40) then (if (k <? 36) then (if (k <? 34) then (if (k <? 33) then (record Row {g := 2, index := 4, kind := (ctor Op.opAdd), dest := 10, source := 14}) else (record Row {g := 2, index := 5, kind := (ctor Op.opXor), dest := 6, source := 10})) else (if (k <? 35) then (record Row {g := 2, index := 6, kind := (ctor Op.opRor), dest := 6, source := 12}) else (record Row {g := 2, index := 7, kind := (ctor Op.opAdd), dest := 2, source := 6}))) else (if (k <? 38) then (if (k <? 37) then (record Row {g := 2, index := 8, kind := (ctor Op.opAddMsg), dest := 2, source := 5}) else (record Row {g := 2, index := 9, kind := (ctor Op.opXor), dest := 14, source := 2})) else (if (k <? 39) then (record Row {g := 2, index := 10, kind := (ctor Op.opRor), dest := 14, source := 8}) else (record Row {g := 2, index := 11, kind := (ctor Op.opAdd), dest := 10, source := 14})))) else (if (k <? 44) then (if (k <? 42) then (if (k <? 41) then (record Row {g := 2, index := 12, kind := (ctor Op.opXor), dest := 6, source := 10}) else (record Row {g := 2, index := 13, kind := (ctor Op.opRor), dest := 6, source := 7})) else (if (k <? 43) then (record Row {g := 3, index := 0, kind := (ctor Op.opAdd), dest := 3, source := 7}) else (record Row {g := 3, index := 1, kind := (ctor Op.opAddMsg), dest := 3, source := 6}))) else (if (k <? 46) then (if (k <? 45) then (record Row {g := 3, index := 2, kind := (ctor Op.opXor), dest := 15, source := 3}) else (record Row {g := 3, index := 3, kind := (ctor Op.opRor), dest := 15, source := 16})) else (if (k <? 47) then (record Row {g := 3, index := 4, kind := (ctor Op.opAdd), dest := 11, source := 15}) else (record Row {g := 3, index := 5, kind := (ctor Op.opXor), dest := 7, source := 11}))))) else (if (k <? 56) then (if (k <? 52) then (if (k <? 50) then (if (k <? 49) then (record Row {g := 3, index := 6, kind := (ctor Op.opRor), dest := 7, source := 12}) else (record Row {g := 3, index := 7, kind := (ctor Op.opAdd), dest := 3, source := 7})) else (if (k <? 51) then (record Row {g := 3, index := 8, kind := (ctor Op.opAddMsg), dest := 3, source := 7}) else (record Row {g := 3, index := 9, kind := (ctor Op.opXor), dest := 15, source := 3}))) else (if (k <? 54) then (if (k <? 53) then (record Row {g := 3, index := 10, kind := (ctor Op.opRor), dest := 15, source := 8}) else (record Row {g := 3, index := 11, kind := (ctor Op.opAdd), dest := 11, source := 15})) else (if (k <? 55) then (record Row {g := 3, index := 12, kind := (ctor Op.opXor), dest := 7, source := 11}) else (record Row {g := 3, index := 13, kind := (ctor Op.opRor), dest := 7, source := 7})))) else (if (k <? 60) then (if (k <? 58) then (if (k <? 57) then (record Row {g := 4, index := 0, kind := (ctor Op.opAdd), dest := 0, source := 5}) else (record Row {g := 4, index := 1, kind := (ctor Op.opAddMsg), dest := 0, source := 8})) else (if (k <? 59) then (record Row {g := 4, index := 2, kind := (ctor Op.opXor), dest := 15, source := 0}) else (record Row {g := 4, index := 3, kind := (ctor Op.opRor), dest := 15, source := 16}))) else (if (k <? 62) then (if (k <? 61) then (record Row {g := 4, index := 4, kind := (ctor Op.opAdd), dest := 10, source := 15}) else (record Row {g := 4, index := 5, kind := (ctor Op.opXor), dest := 5, source := 10})) else (if (k <? 63) then (record Row {g := 4, index := 6, kind := (ctor Op.opRor), dest := 5, source := 12}) else (record Row {g := 4, index := 7, kind := (ctor Op.opAdd), dest := 0, source := 5}))))))) else (if (k <? 96) then (if (k <? 80) then (if (k <? 72) then (if (k <? 68) then (if (k <? 66) then (if (k <? 65) then (record Row {g := 4, index := 8, kind := (ctor Op.opAddMsg), dest := 0, source := 9}) else (record Row {g := 4, index := 9, kind := (ctor Op.opXor), dest := 15, source := 0})) else (if (k <? 67) then (record Row {g := 4, index := 10, kind := (ctor Op.opRor), dest := 15, source := 8}) else (record Row {g := 4, index := 11, kind := (ctor Op.opAdd), dest := 10, source := 15}))) else (if (k <? 70) then (if (k <? 69) then (record Row {g := 4, index := 12, kind := (ctor Op.opXor), dest := 5, source := 10}) else (record Row {g := 4, index := 13, kind := (ctor Op.opRor), dest := 5, source := 7})) else (if (k <? 71) then (record Row {g := 5, index := 0, kind := (ctor Op.opAdd), dest := 1, source := 6}) else (record Row {g := 5, index := 1, kind := (ctor Op.opAddMsg), dest := 1, source := 10})))) else (if (k <? 76) then (if (k <? 74) then (if (k <? 73) then (record Row {g := 5, index := 2, kind := (ctor Op.opXor), dest := 12, source := 1}) else (record Row {g := 5, index := 3, kind := (ctor Op.opRor), dest := 12, source := 16})) else (if (k <? 75) then (record Row {g := 5, index := 4, kind := (ctor Op.opAdd), dest := 11, source := 12}) else (record Row {g := 5, index := 5, kind := (ctor Op.opXor), dest := 6, source := 11}))) else (if (k <? 78) then (if (k <? 77) then (record Row {g := 5, index := 6, kind := (ctor Op.opRor), dest := 6, source := 12}) else (record Row {g := 5, index := 7, kind := (ctor Op.opAdd), dest := 1, source := 6})) else (if (k <? 79) then (record Row {g := 5, index := 8, kind := (ctor Op.opAddMsg), dest := 1, source := 11}) else (record Row {g := 5, index := 9, kind := (ctor Op.opXor), dest := 12, source := 1}))))) else (if (k <? 88) then (if (k <? 84) then (if (k <? 82) then (if (k <? 81) then (record Row {g := 5, index := 10, kind := (ctor Op.opRor), dest := 12, source := 8}) else (record Row {g := 5, index := 11, kind := (ctor Op.opAdd), dest := 11, source := 12})) else (if (k <? 83) then (record Row {g := 5, index := 12, kind := (ctor Op.opXor), dest := 6, source := 11}) else (record Row {g := 5, index := 13, kind := (ctor Op.opRor), dest := 6, source := 7}))) else (if (k <? 86) then (if (k <? 85) then (record Row {g := 6, index := 0, kind := (ctor Op.opAdd), dest := 2, source := 7}) else (record Row {g := 6, index := 1, kind := (ctor Op.opAddMsg), dest := 2, source := 12})) else (if (k <? 87) then (record Row {g := 6, index := 2, kind := (ctor Op.opXor), dest := 13, source := 2}) else (record Row {g := 6, index := 3, kind := (ctor Op.opRor), dest := 13, source := 16})))) else (if (k <? 92) then (if (k <? 90) then (if (k <? 89) then (record Row {g := 6, index := 4, kind := (ctor Op.opAdd), dest := 8, source := 13}) else (record Row {g := 6, index := 5, kind := (ctor Op.opXor), dest := 7, source := 8})) else (if (k <? 91) then (record Row {g := 6, index := 6, kind := (ctor Op.opRor), dest := 7, source := 12}) else (record Row {g := 6, index := 7, kind := (ctor Op.opAdd), dest := 2, source := 7}))) else (if (k <? 94) then (if (k <? 93) then (record Row {g := 6, index := 8, kind := (ctor Op.opAddMsg), dest := 2, source := 13}) else (record Row {g := 6, index := 9, kind := (ctor Op.opXor), dest := 13, source := 2})) else (if (k <? 95) then (record Row {g := 6, index := 10, kind := (ctor Op.opRor), dest := 13, source := 8}) else (record Row {g := 6, index := 11, kind := (ctor Op.opAdd), dest := 8, source := 13})))))) else (if (k <? 112) then (if (k <? 104) then (if (k <? 100) then (if (k <? 98) then (if (k <? 97) then (record Row {g := 6, index := 12, kind := (ctor Op.opXor), dest := 7, source := 8}) else (record Row {g := 6, index := 13, kind := (ctor Op.opRor), dest := 7, source := 7})) else (if (k <? 99) then (record Row {g := 7, index := 0, kind := (ctor Op.opAdd), dest := 3, source := 4}) else (record Row {g := 7, index := 1, kind := (ctor Op.opAddMsg), dest := 3, source := 14}))) else (if (k <? 102) then (if (k <? 101) then (record Row {g := 7, index := 2, kind := (ctor Op.opXor), dest := 14, source := 3}) else (record Row {g := 7, index := 3, kind := (ctor Op.opRor), dest := 14, source := 16})) else (if (k <? 103) then (record Row {g := 7, index := 4, kind := (ctor Op.opAdd), dest := 9, source := 14}) else (record Row {g := 7, index := 5, kind := (ctor Op.opXor), dest := 4, source := 9})))) else (if (k <? 108) then (if (k <? 106) then (if (k <? 105) then (record Row {g := 7, index := 6, kind := (ctor Op.opRor), dest := 4, source := 12}) else (record Row {g := 7, index := 7, kind := (ctor Op.opAdd), dest := 3, source := 4})) else (if (k <? 107) then (record Row {g := 7, index := 8, kind := (ctor Op.opAddMsg), dest := 3, source := 15}) else (record Row {g := 7, index := 9, kind := (ctor Op.opXor), dest := 14, source := 3}))) else (if (k <? 110) then (if (k <? 109) then (record Row {g := 7, index := 10, kind := (ctor Op.opRor), dest := 14, source := 8}) else (record Row {g := 7, index := 11, kind := (ctor Op.opAdd), dest := 9, source := 14})) else (if (k <? 111) then (record Row {g := 7, index := 12, kind := (ctor Op.opXor), dest := 4, source := 9}) else (record Row {g := 7, index := 13, kind := (ctor Op.opRor), dest := 4, source := 7}))))) else (if (k <? 120) then (if (k <? 116) then (if (k <? 114) then (if (k <? 113) then (record Row {g := 0, index := 0, kind := (ctor Op.opXor), dest := 0, source := 8}) else (record Row {g := 0, index := 1, kind := (ctor Op.opXor), dest := 1, source := 9})) else (if (k <? 115) then (record Row {g := 0, index := 2, kind := (ctor Op.opXor), dest := 2, source := 10}) else (record Row {g := 0, index := 3, kind := (ctor Op.opXor), dest := 3, source := 11}))) else (if (k <? 118) then (if (k <? 117) then (record Row {g := 0, index := 4, kind := (ctor Op.opXor), dest := 4, source := 12}) else (record Row {g := 0, index := 5, kind := (ctor Op.opXor), dest := 5, source := 13})) else (if (k <? 119) then (record Row {g := 0, index := 6, kind := (ctor Op.opXor), dest := 6, source := 14}) else (record Row {g := 0, index := 7, kind := (ctor Op.opXor), dest := 7, source := 15})))) else (if (k <? 124) then (if (k <? 122) then (if (k <? 121) then (record Row {g := 0, index := 8, kind := (ctor Op.opXorCv), dest := 8, source := 0}) else (record Row {g := 0, index := 9, kind := (ctor Op.opXorCv), dest := 9, source := 1})) else (if (k <? 123) then (record Row {g := 0, index := 10, kind := (ctor Op.opXorCv), dest := 10, source := 2}) else (record Row {g := 0, index := 11, kind := (ctor Op.opXorCv), dest := 11, source := 3}))) else (if (k <? 126) then (if (k <? 125) then (record Row {g := 0, index := 12, kind := (ctor Op.opXorCv), dest := 12, source := 4}) else (record Row {g := 0, index := 13, kind := (ctor Op.opXorCv), dest := 13, source := 5})) else (if (k <? 127) then (record Row {g := 0, index := 14, kind := (ctor Op.opXorCv), dest := 14, source := 6}) else (record Row {g := 0, index := 15, kind := (ctor Op.opXorCv), dest := 15, source := 7})))))))),
   executable: true
 }
 
 definition{
-  name: g2,
-  parameters: [s : Words16, m : Words16],
-  result: Words16,
-  body: (let q : Quad := (gcore (project s v2) (project s v6) (project s v10) (project s v14) (project m v4) (project m v5)); (record Words16 {v0 := (project s v0), v1 := (project s v1), v2 := (project q qa), v3 := (project s v3), v4 := (project s v4), v5 := (project s v5), v6 := (project q qb), v7 := (project s v7), v8 := (project s v8), v9 := (project s v9), v10 := (project q qc), v11 := (project s v11), v12 := (project s v12), v13 := (project s v13), v14 := (project q qd), v15 := (project s v15)})),
-  axioms: [Quot.sound, propext],
+  name: getWord,
+  parameters: [w : Words16, i : Nat],
+  result: UInt32,
+  body: (if (i <? 8) then (if (i <? 4) then (if (i <? 2) then (if (i <? 1) then (project w v0) else (project w v1)) else (if (i <? 3) then (project w v2) else (project w v3))) else (if (i <? 6) then (if (i <? 5) then (project w v4) else (project w v5)) else (if (i <? 7) then (project w v6) else (project w v7)))) else (if (i <? 12) then (if (i <? 10) then (if (i <? 9) then (project w v8) else (project w v9)) else (if (i <? 11) then (project w v10) else (project w v11))) else (if (i <? 14) then (if (i <? 13) then (project w v12) else (project w v13)) else (if (i <? 15) then (project w v14) else (project w v15))))),
   executable: true
 }
 
 definition{
-  name: g3,
-  parameters: [s : Words16, m : Words16],
+  name: setWord,
+  parameters: [w : Words16, i : Nat, value : UInt32],
   result: Words16,
-  body: (let q : Quad := (gcore (project s v3) (project s v7) (project s v11) (project s v15) (project m v6) (project m v7)); (record Words16 {v0 := (project s v0), v1 := (project s v1), v2 := (project s v2), v3 := (project q qa), v4 := (project s v4), v5 := (project s v5), v6 := (project s v6), v7 := (project q qb), v8 := (project s v8), v9 := (project s v9), v10 := (project s v10), v11 := (project q qc), v12 := (project s v12), v13 := (project s v13), v14 := (project s v14), v15 := (project q qd)})),
-  axioms: [Quot.sound, propext],
+  body: (if (i <? 8) then (if (i <? 4) then (if (i <? 2) then (if (i <? 1) then (record Words16 {v0 := value, v1 := (project w v1), v2 := (project w v2), v3 := (project w v3), v4 := (project w v4), v5 := (project w v5), v6 := (project w v6), v7 := (project w v7), v8 := (project w v8), v9 := (project w v9), v10 := (project w v10), v11 := (project w v11), v12 := (project w v12), v13 := (project w v13), v14 := (project w v14), v15 := (project w v15)}) else (record Words16 {v0 := (project w v0), v1 := value, v2 := (project w v2), v3 := (project w v3), v4 := (project w v4), v5 := (project w v5), v6 := (project w v6), v7 := (project w v7), v8 := (project w v8), v9 := (project w v9), v10 := (project w v10), v11 := (project w v11), v12 := (project w v12), v13 := (project w v13), v14 := (project w v14), v15 := (project w v15)})) else (if (i <? 3) then (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := value, v3 := (project w v3), v4 := (project w v4), v5 := (project w v5), v6 := (project w v6), v7 := (project w v7), v8 := (project w v8), v9 := (project w v9), v10 := (project w v10), v11 := (project w v11), v12 := (project w v12), v13 := (project w v13), v14 := (project w v14), v15 := (project w v15)}) else (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := (project w v2), v3 := value, v4 := (project w v4), v5 := (project w v5), v6 := (project w v6), v7 := (project w v7), v8 := (project w v8), v9 := (project w v9), v10 := (project w v10), v11 := (project w v11), v12 := (project w v12), v13 := (project w v13), v14 := (project w v14), v15 := (project w v15)}))) else (if (i <? 6) then (if (i <? 5) then (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := (project w v2), v3 := (project w v3), v4 := value, v5 := (project w v5), v6 := (project w v6), v7 := (project w v7), v8 := (project w v8), v9 := (project w v9), v10 := (project w v10), v11 := (project w v11), v12 := (project w v12), v13 := (project w v13), v14 := (project w v14), v15 := (project w v15)}) else (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := (project w v2), v3 := (project w v3), v4 := (project w v4), v5 := value, v6 := (project w v6), v7 := (project w v7), v8 := (project w v8), v9 := (project w v9), v10 := (project w v10), v11 := (project w v11), v12 := (project w v12), v13 := (project w v13), v14 := (project w v14), v15 := (project w v15)})) else (if (i <? 7) then (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := (project w v2), v3 := (project w v3), v4 := (project w v4), v5 := (project w v5), v6 := value, v7 := (project w v7), v8 := (project w v8), v9 := (project w v9), v10 := (project w v10), v11 := (project w v11), v12 := (project w v12), v13 := (project w v13), v14 := (project w v14), v15 := (project w v15)}) else (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := (project w v2), v3 := (project w v3), v4 := (project w v4), v5 := (project w v5), v6 := (project w v6), v7 := value, v8 := (project w v8), v9 := (project w v9), v10 := (project w v10), v11 := (project w v11), v12 := (project w v12), v13 := (project w v13), v14 := (project w v14), v15 := (project w v15)})))) else (if (i <? 12) then (if (i <? 10) then (if (i <? 9) then (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := (project w v2), v3 := (project w v3), v4 := (project w v4), v5 := (project w v5), v6 := (project w v6), v7 := (project w v7), v8 := value, v9 := (project w v9), v10 := (project w v10), v11 := (project w v11), v12 := (project w v12), v13 := (project w v13), v14 := (project w v14), v15 := (project w v15)}) else (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := (project w v2), v3 := (project w v3), v4 := (project w v4), v5 := (project w v5), v6 := (project w v6), v7 := (project w v7), v8 := (project w v8), v9 := value, v10 := (project w v10), v11 := (project w v11), v12 := (project w v12), v13 := (project w v13), v14 := (project w v14), v15 := (project w v15)})) else (if (i <? 11) then (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := (project w v2), v3 := (project w v3), v4 := (project w v4), v5 := (project w v5), v6 := (project w v6), v7 := (project w v7), v8 := (project w v8), v9 := (project w v9), v10 := value, v11 := (project w v11), v12 := (project w v12), v13 := (project w v13), v14 := (project w v14), v15 := (project w v15)}) else (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := (project w v2), v3 := (project w v3), v4 := (project w v4), v5 := (project w v5), v6 := (project w v6), v7 := (project w v7), v8 := (project w v8), v9 := (project w v9), v10 := (project w v10), v11 := value, v12 := (project w v12), v13 := (project w v13), v14 := (project w v14), v15 := (project w v15)}))) else (if (i <? 14) then (if (i <? 13) then (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := (project w v2), v3 := (project w v3), v4 := (project w v4), v5 := (project w v5), v6 := (project w v6), v7 := (project w v7), v8 := (project w v8), v9 := (project w v9), v10 := (project w v10), v11 := (project w v11), v12 := value, v13 := (project w v13), v14 := (project w v14), v15 := (project w v15)}) else (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := (project w v2), v3 := (project w v3), v4 := (project w v4), v5 := (project w v5), v6 := (project w v6), v7 := (project w v7), v8 := (project w v8), v9 := (project w v9), v10 := (project w v10), v11 := (project w v11), v12 := (project w v12), v13 := value, v14 := (project w v14), v15 := (project w v15)})) else (if (i <? 15) then (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := (project w v2), v3 := (project w v3), v4 := (project w v4), v5 := (project w v5), v6 := (project w v6), v7 := (project w v7), v8 := (project w v8), v9 := (project w v9), v10 := (project w v10), v11 := (project w v11), v12 := (project w v12), v13 := (project w v13), v14 := value, v15 := (project w v15)}) else (record Words16 {v0 := (project w v0), v1 := (project w v1), v2 := (project w v2), v3 := (project w v3), v4 := (project w v4), v5 := (project w v5), v6 := (project w v6), v7 := (project w v7), v8 := (project w v8), v9 := (project w v9), v10 := (project w v10), v11 := (project w v11), v12 := (project w v12), v13 := (project w v13), v14 := (project w v14), v15 := value}))))),
   executable: true
 }
 
 definition{
-  name: g4,
-  parameters: [s : Words16, m : Words16],
-  result: Words16,
-  body: (let q : Quad := (gcore (project s v0) (project s v5) (project s v10) (project s v15) (project m v8) (project m v9)); (record Words16 {v0 := (project q qa), v1 := (project s v1), v2 := (project s v2), v3 := (project s v3), v4 := (project s v4), v5 := (project q qb), v6 := (project s v6), v7 := (project s v7), v8 := (project s v8), v9 := (project s v9), v10 := (project q qc), v11 := (project s v11), v12 := (project s v12), v13 := (project s v13), v14 := (project s v14), v15 := (project q qd)})),
-  axioms: [Quot.sound, propext],
+  name: getCv,
+  parameters: [c : Cv, i : Nat],
+  result: UInt32,
+  body: (if (i <? 4) then (if (i <? 2) then (if (i <? 1) then (project c h0) else (project c h1)) else (if (i <? 3) then (project c h2) else (project c h3))) else (if (i <? 6) then (if (i <? 5) then (project c h4) else (project c h5)) else (if (i <? 7) then (project c h6) else (project c h7)))),
   executable: true
 }
 
 definition{
-  name: g5,
-  parameters: [s : Words16, m : Words16],
-  result: Words16,
-  body: (let q : Quad := (gcore (project s v1) (project s v6) (project s v11) (project s v12) (project m v10) (project m v11)); (record Words16 {v0 := (project s v0), v1 := (project q qa), v2 := (project s v2), v3 := (project s v3), v4 := (project s v4), v5 := (project s v5), v6 := (project q qb), v7 := (project s v7), v8 := (project s v8), v9 := (project s v9), v10 := (project s v10), v11 := (project q qc), v12 := (project q qd), v13 := (project s v13), v14 := (project s v14), v15 := (project s v15)})),
-  axioms: [Quot.sound, propext],
+  name: slotWord,
+  parameters: [r : Nat, slot : Nat],
+  result: Nat,
+  body: (let at : Nat := ((prim multiply r 16 : Nat) + slot); (if (at <? 56) then (if (at <? 28) then (if (at <? 14) then (if (at <? 7) then (if (at <? 3) then (if (at <? 1) then 0 else (if (at <? 2) then 1 else 2)) else (if (at <? 5) then (if (at <? 4) then 3 else 4) else (if (at <? 6) then 5 else 6))) else (if (at <? 10) then (if (at <? 8) then 7 else (if (at <? 9) then 8 else 9)) else (if (at <? 12) then (if (at <? 11) then 10 else 11) else (if (at <? 13) then 12 else 13)))) else (if (at <? 21) then (if (at <? 17) then (if (at <? 15) then 14 else (if (at <? 16) then 15 else 2)) else (if (at <? 19) then (if (at <? 18) then 6 else 3) else (if (at <? 20) then 10 else 7))) else (if (at <? 24) then (if (at <? 22) then 0 else (if (at <? 23) then 4 else 13)) else (if (at <? 26) then (if (at <? 25) then 1 else 11) else (if (at <? 27) then 12 else 5))))) else (if (at <? 42) then (if (at <? 35) then (if (at <? 31) then (if (at <? 29) then 9 else (if (at <? 30) then 14 else 15)) else (if (at <? 33) then (if (at <? 32) then 8 else 3) else (if (at <? 34) then 4 else 10))) else (if (at <? 38) then (if (at <? 36) then 12 else (if (at <? 37) then 13 else 2)) else (if (at <? 40) then (if (at <? 39) then 7 else 14) else (if (at <? 41) then 6 else 5)))) else (if (at <? 49) then (if (at <? 45) then (if (at <? 43) then 9 else (if (at <? 44) then 0 else 11)) else (if (at <? 47) then (if (at <? 46) then 15 else 8) else (if (at <? 48) then 1 else 10))) else (if (at <? 52) then (if (at <? 50) then 7 else (if (at <? 51) then 12 else 9)) else (if (at <? 54) then (if (at <? 53) then 14 else 3) else (if (at <? 55) then 13 else 15)))))) else (if (at <? 84) then (if (at <? 70) then (if (at <? 63) then (if (at <? 59) then (if (at <? 57) then 4 else (if (at <? 58) then 0 else 11)) else (if (at <? 61) then (if (at <? 60) then 2 else 5) else (if (at <? 62) then 8 else 1))) else (if (at <? 66) then (if (at <? 64) then 6 else (if (at <? 65) then 12 else 13)) else (if (at <? 68) then (if (at <? 67) then 9 else 11) else (if (at <? 69) then 15 else 10)))) else (if (at <? 77) then (if (at <? 73) then (if (at <? 71) then 14 else (if (at <? 72) then 8 else 7)) else (if (at <? 75) then (if (at <? 74) then 2 else 5) else (if (at <? 76) then 3 else 0))) else (if (at <? 80) then (if (at <? 78) then 1 else (if (at <? 79) then 6 else 4)) else (if (at <? 82) then (if (at <? 81) then 9 else 14) else (if (at <? 83) then 11 else 5))))) else (if (at <? 98) then (if (at <? 91) then (if (at <? 87) then (if (at <? 85) then 8 else (if (at <? 86) then 12 else 15)) else (if (at <? 89) then (if (at <? 88) then 1 else 13) else (if (at <? 90) then 3 else 0))) else (if (at <? 94) then (if (at <? 92) then 10 else (if (at <? 93) then 2 else 6)) else (if (at <? 96) then (if (at <? 95) then 4 else 7) else (if (at <? 97) then 11 else 15)))) else (if (at <? 105) then (if (at <? 101) then (if (at <? 99) then 5 else (if (at <? 100) then 0 else 1)) else (if (at <? 103) then (if (at <? 102) then 9 else 8) else (if (at <? 104) then 6 else 14))) else (if (at <? 108) then (if (at <? 106) then 10 else (if (at <? 107) then 2 else 12)) else (if (at <? 110) then (if (at <? 109) then 3 else 4) else (if (at <? 111) then 7 else 13)))))))),
   executable: true
 }
 
 definition{
-  name: g6,
-  parameters: [s : Words16, m : Words16],
-  result: Words16,
-  body: (let q : Quad := (gcore (project s v2) (project s v7) (project s v8) (project s v13) (project m v12) (project m v13)); (record Words16 {v0 := (project s v0), v1 := (project s v1), v2 := (project q qa), v3 := (project s v3), v4 := (project s v4), v5 := (project s v5), v6 := (project s v6), v7 := (project q qb), v8 := (project q qc), v9 := (project s v9), v10 := (project s v10), v11 := (project s v11), v12 := (project s v12), v13 := (project q qd), v14 := (project s v14), v15 := (project s v15)})),
-  axioms: [Quot.sound, propext],
+  name: amountWord,
+  parameters: [source : Nat],
+  result: UInt32,
+  body: (if (source <? 12) then (if (source <? 9) then (if (source <? 8) then (7 : UInt32) else (8 : UInt32)) else (if (source <? 10) then (9 : UInt32) else (if (source <? 11) then (10 : UInt32) else (11 : UInt32)))) else (if (source <? 14) then (if (source <? 13) then (12 : UInt32) else (13 : UInt32)) else (if (source <? 15) then (14 : UInt32) else (if (source <? 16) then (15 : UInt32) else (16 : UInt32))))),
   executable: true
 }
 
 definition{
-  name: g7,
-  parameters: [s : Words16, m : Words16],
-  result: Words16,
-  body: (let q : Quad := (gcore (project s v3) (project s v4) (project s v9) (project s v14) (project m v14) (project m v15)); (record Words16 {v0 := (project s v0), v1 := (project s v1), v2 := (project s v2), v3 := (project q qa), v4 := (project q qb), v5 := (project s v5), v6 := (project s v6), v7 := (project s v7), v8 := (project s v8), v9 := (project q qc), v10 := (project s v10), v11 := (project s v11), v12 := (project s v12), v13 := (project s v13), v14 := (project q qd), v15 := (project s v15)})),
-  axioms: [Quot.sound, propext],
-  executable: true
-}
-
-definition{
-  name: round,
-  parameters: [s : Words16, m : Words16],
-  result: Words16,
-  body: (g7 (g6 (g5 (g4 (g3 (g2 (g1 (g0 s m) m) m) m) m) m) m) m),
+  name: machineStep,
+  parameters: [cv : Cv, m : Words16, mach : Machine, k : Nat],
+  result: Machine,
+  body: (let r : Nat := (if (k <? 784) then (prim quotient k 112 0 : Nat) else 7); (let row : Row := (rowAt (if (k <? 784) then (prim remainder k 112 0 : Nat) else (prim subtract k 672 : Nat))); (let st : Words16 := (project mach state); (let left : UInt32 := (getWord st (project row dest)); (let right : UInt32 := (match (project row kind)
+    | Op.opAdd => (getWord st (project row source))
+    | Op.opAddMsg => (getWord m (slotWord r (project row source)))
+    | Op.opXor => (getWord st (project row source))
+    | Op.opRor => (amountWord (project row source))
+    | Op.opXorCv => (getCv cv (project row source))); (let result : UInt32 := (perform (project row kind) left right); (record Machine {state := (if (r =? 7) then st else (setWord st (project row dest) result)), out := (if (r =? 7) then (setWord (project mach out) (project row dest) result) else (project mach out)), log := (cons (record Step {round := r, g := (project row g), index := (project row index), op := (project row kind), dest := (project row dest), source := (project row source), left := left, right := right, result := result}) (project mach log))}))))))),
   axioms: [Quot.sound, propext],
   executable: true
 }
@@ -316,6 +322,38 @@ definition{
 }
 
 definition{
+  name: initialState,
+  parameters: [cv : Cv, counterLo : UInt32, counterHi : UInt32, blockLen : UInt32, flags : UInt32],
+  result: Words16,
+  body: (record Words16 {v0 := (project cv h0), v1 := (project cv h1), v2 := (project cv h2), v3 := (project cv h3), v4 := (project cv h4), v5 := (project cv h5), v6 := (project cv h6), v7 := (project cv h7), v8 := (1779033703 : UInt32), v9 := (3144134277 : UInt32), v10 := (1013904242 : UInt32), v11 := (2773480762 : UInt32), v12 := counterLo, v13 := counterHi, v14 := blockLen, v15 := flags}),
+  executable: true
+}
+
+definition{
+  name: compressTrace,
+  parameters: [
+    cv : Cv,
+    m : Words16,
+    counterLo : UInt32,
+    counterHi : UInt32,
+    blockLen : UInt32,
+    flags : UInt32
+  ],
+  result: CompressionTrace,
+  body: (let ran : (Nat * Machine) := (prim iterate (fun [cv, m] (walk : (Nat * Machine)) => (((first walk) + 1), (machineStep cv m (second walk) (first walk)))) 800 (0, (record Machine {state := (initialState cv counterLo counterHi blockLen flags), out := (record Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)}), log := (nil Step)})) : (Nat * Machine)); (record CompressionTrace {chain := cv, block := m, counterLo := counterLo, counterHi := counterHi, blockLen := blockLen, flags := flags, log := (project (second ran) log)})),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: compressOut,
+  parameters: [t : CompressionTrace],
+  result: Words16,
+  body: (prim list_fold (fun (out : Words16) (s : Step) => (if ((project s round) =? 7) then (setWord out (project s dest) (project s result)) else out)) (record Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)}) (project t log) : Words16),
+  executable: true
+}
+
+definition{
   name: compress,
   parameters: [
     cv : Cv,
@@ -326,7 +364,7 @@ definition{
     flags : UInt32
   ],
   result: Words16,
-  body: (let s : Words16 := (first (prim iterate (fun (p : (Words16 * Words16)) => ((round (first p) (second p)), (permute (second p)))) 7 ((record Words16 {v0 := (project cv h0), v1 := (project cv h1), v2 := (project cv h2), v3 := (project cv h3), v4 := (project cv h4), v5 := (project cv h5), v6 := (project cv h6), v7 := (project cv h7), v8 := (1779033703 : UInt32), v9 := (3144134277 : UInt32), v10 := (1013904242 : UInt32), v11 := (2773480762 : UInt32), v12 := counterLo, v13 := counterHi, v14 := blockLen, v15 := flags}), m) : (Words16 * Words16))); (record Words16 {v0 := (xor (project s v0) (project s v8)), v1 := (xor (project s v1) (project s v9)), v2 := (xor (project s v2) (project s v10)), v3 := (xor (project s v3) (project s v11)), v4 := (xor (project s v4) (project s v12)), v5 := (xor (project s v5) (project s v13)), v6 := (xor (project s v6) (project s v14)), v7 := (xor (project s v7) (project s v15)), v8 := (xor (project s v8) (project cv h0)), v9 := (xor (project s v9) (project cv h1)), v10 := (xor (project s v10) (project cv h2)), v11 := (xor (project s v11) (project cv h3)), v12 := (xor (project s v12) (project cv h4)), v13 := (xor (project s v13) (project cv h5)), v14 := (xor (project s v14) (project cv h6)), v15 := (xor (project s v15) (project cv h7))})),
+  body: (compressOut (compressTrace cv m counterLo counterHi blockLen flags)),
   axioms: [Quot.sound, propext],
   executable: true
 }
@@ -431,58 +469,202 @@ definition{
   executable: true
 }
 
+structure{
+  name: Entry,
+  type_parameters: [],
+  parameters: [],
+  fields: [{name: cv, type: Cv}, {name: origin, type: Nat}, {name: span, type: Nat}]
+}
+
+structure{
+  name: Pending,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: role, type: Nat},
+    {name: origin, type: Nat},
+    {name: span, type: Nat},
+    {name: index, type: Nat},
+    {name: offset, type: Nat},
+    {name: chain, type: Cv},
+    {name: block, type: Words16},
+    {name: counter, type: Nat},
+    {name: blockLen, type: UInt32},
+    {name: flags, type: UInt32}
+  ]
+}
+
+structure{
+  name: Node,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: role, type: Nat},
+    {name: origin, type: Nat},
+    {name: span, type: Nat},
+    {name: index, type: Nat},
+    {name: offset, type: Nat},
+    {name: chain, type: Cv},
+    {name: block, type: Words16},
+    {name: counterLo, type: UInt32},
+    {name: counterHi, type: UInt32},
+    {name: blockLen, type: UInt32},
+    {name: flags, type: UInt32},
+    {name: output, type: Words16}
+  ]
+}
+
+inductive{
+  name: Event,
+  type_parameters: [],
+  parameters: [],
+  constructors: [
+    {name: compressed, fields: [Node]},
+    {name: pushed, fields: [Entry, Nat]},
+    {name: popped, fields: [Entry, Nat]}
+  ]
+}
+
+structure{
+  name: Hasher,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: keyWords, type: Cv},
+    {name: modeFlags, type: UInt32},
+    {name: chunkCount, type: Nat},
+    {name: pending, type: Bytes},
+    {name: stack, type: (List Entry)},
+    {name: log, type: (List Event)},
+    {name: prelude, type: (List Event)}
+  ]
+}
+
+structure{
+  name: Trace,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: mode, type: Nat},
+    {name: inputLen, type: Nat},
+    {name: outLen, type: Nat},
+    {name: keyWords, type: Cv},
+    {name: modeFlags, type: UInt32},
+    {name: prelude, type: (List Event)},
+    {name: events, type: (List Event)}
+  ]
+}
+
+structure{
+  name: Merge,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: fresh, type: Entry},
+    {name: total, type: Nat},
+    {name: stack, type: (List Entry)},
+    {name: log, type: (List Event)}
+  ]
+}
+
+inductive{
+  name: Mode,
+  type_parameters: [],
+  parameters: [],
+  constructors: [
+    {name: hashMode, fields: []},
+    {name: keyedMode, fields: [Bytes]},
+    {name: deriveMode, fields: [Bytes]}
+  ]
+}
+
+inductive{
+  name: Blake3Error,
+  type_parameters: [],
+  parameters: [],
+  constructors: [{name: keyLength, fields: [Nat]}]
+}
+
 definition{
-  name: chunkOutput,
-  parameters: [key : Cv, base : UInt32, message : Bytes, begin : Nat, len : Nat, chunk : Nat],
-  result: Output,
-  body: (let limit : Nat := (begin + len); (let last : Nat := (lastOffset len); (let lo : UInt32 := (counterLow chunk); (let hi : UInt32 := (counterHigh chunk); (let walked : (Nat * Cv) := (prim iterate (fun [base, begin, hi, limit, lo, message] (walk : (Nat * Cv)) => (let pos : Nat := (first walk); ((pos + 64), (cvOf (compress (second walk) (loadBlock message limit (begin + pos)) lo hi (64 : UInt32) (prim bit_or base (startFlag pos) : UInt32)))))) (prim quotient last 64 0 : Nat) (0, key) : (Nat * Cv)); (record Output {chain := (second walked), block := (loadBlock message limit (begin + last)), counter := chunk, blockLen := (wordOfNat (prim subtract len last : Nat) 7), flags := (prim bit_or base (prim bit_or (flagChunkEnd) (startFlag last) : UInt32) : UInt32)})))))),
+  name: run,
+  parameters: [p : Pending],
+  result: Node,
+  body: (let lo : UInt32 := (counterLow (project p counter)); (let hi : UInt32 := (counterHigh (project p counter)); (record Node {role := (project p role), origin := (project p origin), span := (project p span), index := (project p index), offset := (project p offset), chain := (project p chain), block := (project p block), counterLo := lo, counterHi := hi, blockLen := (project p blockLen), flags := (project p flags), output := (compress (project p chain) (project p block) lo hi (project p blockLen) (project p flags))}))),
   axioms: [Quot.sound, propext],
   executable: true
 }
 
 definition{
-  name: chainOf,
-  parameters: [node : Output],
-  result: Cv,
-  body: (cvOf (compress (project node chain) (project node block) (counterLow (project node counter)) (counterHigh (project node counter)) (project node blockLen) (project node flags))),
+  name: rootPending,
+  parameters: [p : Pending, index : Nat],
+  result: Pending,
+  body: (record Pending {role := 2, origin := (project p origin), span := (project p span), index := index, offset := (project p offset), chain := (project p chain), block := (project p block), counter := index, blockLen := (project p blockLen), flags := (prim bit_or (project p flags) (flagRoot) : UInt32)}),
   axioms: [Quot.sound, propext],
   executable: true
 }
 
 definition{
-  name: rootWords,
-  parameters: [node : Output, index : Nat],
-  result: Words16,
-  body: (compress (project node chain) (project node block) (counterLow index) (counterHigh index) (project node blockLen) (prim bit_or (project node flags) (flagRoot) : UInt32)),
+  name: blockPending,
+  parameters: [
+    key : Cv,
+    base : UInt32,
+    message : Bytes,
+    limit : Nat,
+    begin : Nat,
+    chunk : Nat,
+    pos : Nat,
+    chain : Cv,
+    len : Nat,
+    flags : UInt32
+  ],
+  result: Pending,
+  body: (record Pending {role := 0, origin := chunk, span := 1, index := (prim quotient pos 64 0 : Nat), offset := ((prim multiply chunk 1024 : Nat) + pos), chain := chain, block := (loadBlock message limit (begin + pos)), counter := chunk, blockLen := (wordOfNat len 7), flags := (prim bit_or base flags : UInt32)}),
   axioms: [Quot.sound, propext],
   executable: true
 }
 
 definition{
-  name: parentOutput,
-  parameters: [left : Cv, right : Cv, key : Cv, base : UInt32],
-  result: Output,
-  body: (record Output {chain := key, block := (record Words16 {v0 := (project left h0), v1 := (project left h1), v2 := (project left h2), v3 := (project left h3), v4 := (project left h4), v5 := (project left h5), v6 := (project left h6), v7 := (project left h7), v8 := (project right h0), v9 := (project right h1), v10 := (project right h2), v11 := (project right h3), v12 := (project right h4), v13 := (project right h5), v14 := (project right h6), v15 := (project right h7)}), counter := 0, blockLen := (64 : UInt32), flags := (prim bit_or base (flagParent) : UInt32)}),
+  name: chunkPending,
+  parameters: [
+    key : Cv,
+    base : UInt32,
+    message : Bytes,
+    begin : Nat,
+    len : Nat,
+    chunk : Nat,
+    log : (List Event)
+  ],
+  result: (Pending * (List Event)),
+  body: (let limit : Nat := (begin + len); (let last : Nat := (lastOffset len); (let walked : (Nat * (Cv * (List Event))) := (prim iterate (fun [base, begin, chunk, key, limit, message] (walk : (Nat * (Cv * (List Event)))) => (let pos : Nat := (first walk); (let node : Node := (run (blockPending key base message limit begin chunk pos (first (second walk)) 64 (startFlag pos))); ((pos + 64), ((cvOf (project node output)), (cons (ctor Event.compressed node) (second (second walk)))))))) (prim quotient last 64 0 : Nat) (0, (key, log)) : (Nat * (Cv * (List Event)))); ((blockPending key base message limit begin chunk last (first (second walked)) (prim subtract len last : Nat) (prim bit_or (flagChunkEnd) (startFlag last) : UInt32)), (second (second walked)))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: parentPending,
+  parameters: [left : Entry, right : Entry, key : Cv, base : UInt32],
+  result: Pending,
+  body: (record Pending {role := 1, origin := (project left origin), span := ((project left span) + (project right span)), index := 0, offset := 0, chain := key, block := (record Words16 {v0 := (project (project left cv) h0), v1 := (project (project left cv) h1), v2 := (project (project left cv) h2), v3 := (project (project left cv) h3), v4 := (project (project left cv) h4), v5 := (project (project left cv) h5), v6 := (project (project left cv) h6), v7 := (project (project left cv) h7), v8 := (project (project right cv) h0), v9 := (project (project right cv) h1), v10 := (project (project right cv) h2), v11 := (project (project right cv) h3), v12 := (project (project right cv) h4), v13 := (project (project right cv) h5), v14 := (project (project right cv) h6), v15 := (project (project right cv) h7)}), counter := 0, blockLen := (64 : UInt32), flags := (prim bit_or base (flagParent) : UInt32)}),
   axioms: [Quot.sound, propext],
   executable: true
 }
 
 definition{
   name: mergeStep,
-  parameters: [key : Cv, base : UInt32, merging : (Cv * (Nat * (List Cv)))],
-  result: (Option (Cv * (Nat * (List Cv)))),
-  body: (let total : Nat := (first (second merging)); (if ((prim remainder total 2 0 : Nat) =? 0) then (match (second (second merging))
-    | List.cons top rest => (ctor Option.some [(Cv * (Nat * (List Cv)))] ((chainOf (parentOutput top (first merging) key base)), ((prim quotient total 2 0 : Nat), rest)))
-    | List.nil => (ctor Option.none [(Cv * (Nat * (List Cv)))])) else (ctor Option.none [(Cv * (Nat * (List Cv)))]))),
+  parameters: [key : Cv, base : UInt32, merging : Merge],
+  result: (Option Merge),
+  body: (if ((prim remainder (project merging total) 2 0 : Nat) =? 0) then (match (project merging stack)
+    | List.cons top rest => (let node : Node := (run (parentPending top (project merging fresh) key base)); (ctor Option.some [Merge] (record Merge {fresh := (record Entry {cv := (cvOf (project node output)), origin := (project top origin), span := ((project top span) + (project (project merging fresh) span))}), total := (prim quotient (project merging total) 2 0 : Nat), stack := rest, log := (cons (ctor Event.compressed node) (cons (ctor Event.popped top (prim length (project merging stack) : Nat)) (project merging log)))})))
+    | List.nil => (ctor Option.none [Merge])) else (ctor Option.none [Merge])),
   axioms: [Quot.sound, propext],
   executable: true
 }
 
 definition{
   name: pushChunk,
-  parameters: [key : Cv, base : UInt32, stack : (List Cv), fresh : Cv, total : Nat],
-  result: (List Cv),
-  body: (let merged : (Cv * (Nat * (List Cv))) := (first (prim iterate_until (fun [base, key] (merging : (Cv * (Nat * (List Cv)))) => (mergeStep key base merging)) 64 (fresh, (total, stack)) : ((Cv * (Nat * (List Cv))) * Bool))); (cons (first merged) (second (second merged)))),
+  parameters: [key : Cv, base : UInt32, merging : Merge],
+  result: ((List Entry) * (List Event)),
+  body: (let merged : Merge := (first (prim iterate_until (fun [base, key] (mg : Merge) => (mergeStep key base mg)) 64 merging : (Merge * Bool))); (let grown : (List Entry) := (cons (project merged fresh) (project merged stack)); (grown, (cons (ctor Event.pushed (project merged fresh) (prim length grown : Nat)) (project merged log))))),
   axioms: [Quot.sound, propext],
   executable: true
 }
@@ -491,7 +673,7 @@ definition{
   name: hasherWith,
   parameters: [key : Cv, base : UInt32],
   result: Hasher,
-  body: (record Hasher {keyWords := key, modeFlags := base, chunkCount := 0, pending := 0x, stack := (nil Cv)}),
+  body: (record Hasher {keyWords := key, modeFlags := base, chunkCount := 0, pending := 0x, stack := (nil Entry), log := (nil Event), prelude := (nil Event)}),
   executable: true
 }
 
@@ -499,18 +681,34 @@ definition{
   name: update,
   parameters: [state : Hasher, input : Bytes],
   result: Hasher,
-  body: (let joined : Bytes := (prim append (project state pending) input : Bytes); (let size : Nat := (prim length joined : Nat); (let full : Nat := (if (size =? 0) then 0 else (prim quotient (prim subtract size 1 : Nat) 1024 0 : Nat)); (let base : UInt32 := (project state modeFlags); (let key : Cv := (project state keyWords); (let committed : (Nat * (List Cv)) := (prim iterate (fun [base, joined, key, state] (progress : (Nat * (List Cv))) => (let chunk : Nat := ((project state chunkCount) + (first progress)); (((first progress) + 1), (pushChunk key base (second progress) (chainOf (chunkOutput key base joined (prim multiply (first progress) 1024 : Nat) 1024 chunk)) (chunk + 1))))) full (0, (project state stack)) : (Nat * (List Cv))); (let kept : Nat := (prim multiply full 1024 : Nat); (record Hasher {keyWords := key, modeFlags := base, chunkCount := ((project state chunkCount) + full), pending := (match (prim slice joined kept (prim subtract size kept : Nat) : (Option Bytes))
+  body: (let joined : Bytes := (prim append (project state pending) input : Bytes); (let size : Nat := (prim length joined : Nat); (let full : Nat := (if (size =? 0) then 0 else (prim quotient (prim subtract size 1 : Nat) 1024 0 : Nat)); (let base : UInt32 := (project state modeFlags); (let key : Cv := (project state keyWords); (let committed : (Nat * ((List Entry) * (List Event))) := (prim iterate (fun [base, joined, key, state] (progress : (Nat * ((List Entry) * (List Event)))) => (let chunk : Nat := ((project state chunkCount) + (first progress)); (let walked : (Pending * (List Event)) := (chunkPending key base joined (prim multiply (first progress) 1024 : Nat) 1024 chunk (second (second progress))); (let node : Node := (run (first walked)); (((first progress) + 1), (pushChunk key base (record Merge {fresh := (record Entry {cv := (cvOf (project node output)), origin := chunk, span := 1}), total := (chunk + 1), stack := (first (second progress)), log := (cons (ctor Event.compressed node) (second walked))}))))))) full (0, ((project state stack), (project state log))) : (Nat * ((List Entry) * (List Event)))); (let kept : Nat := (prim multiply full 1024 : Nat); (record Hasher {keyWords := key, modeFlags := base, chunkCount := ((project state chunkCount) + full), pending := (match (prim slice joined kept (prim subtract size kept : Nat) : (Option Bytes))
     | Option.some rest => rest
-    | Option.none => 0x), stack := (second committed)})))))))),
+    | Option.none => 0x), stack := (first (second committed)), log := (second (second committed)), prelude := (project state prelude)})))))))),
   axioms: [Quot.sound, propext],
   executable: true
 }
 
 definition{
-  name: finalOutput,
-  parameters: [state : Hasher],
-  result: Output,
-  body: (let key : Cv := (project state keyWords); (let base : UInt32 := (project state modeFlags); (let tail : Bytes := (project state pending); (prim list_fold (fun [base, key] (node : Output) (left : Cv) => (parentOutput left (chainOf node) key base)) (chunkOutput key base tail 0 (prim length tail : Nat) (project state chunkCount)) (project state stack) : Output)))),
+  name: reverseEvents,
+  parameters: [events : (List Event)],
+  result: (List Event),
+  body: (prim list_fold (fun (reversed : (List Event)) (event : Event) => (cons event reversed)) (nil Event) events : (List Event)),
+  executable: true
+}
+
+definition{
+  name: modeOf,
+  parameters: [base : UInt32],
+  result: Nat,
+  body: (if (prim equal base (flagKeyedHash) : Bool) then 1 else (if (prim equal base (flagDeriveKeyMaterial) : Bool) then 2 else (if (prim equal base (flagDeriveKeyContext) : Bool) then 3 else 0))),
+  executable: true
+}
+
+definition{
+  name: finalTrace,
+  parameters: [state : Hasher, outLen : Nat],
+  result: Trace,
+  body: (let key : Cv := (project state keyWords); (let base : UInt32 := (project state modeFlags); (let tail : Bytes := (project state pending); (let walked : (Pending * (List Event)) := (chunkPending key base tail 0 (prim length tail : Nat) (project state chunkCount) (project state log)); (let folded : (Pending * ((List Event) * Nat)) := (prim list_fold (fun [base, key] (acc : (Pending * ((List Event) * Nat))) (entry : Entry) => (let node : Node := (run (first acc)); ((parentPending entry (record Entry {cv := (cvOf (project node output)), origin := (project (first acc) origin), span := (project (first acc) span)}) key base), ((cons (ctor Event.popped entry (second (second acc))) (cons (ctor Event.compressed node) (first (second acc)))), (prim subtract (second (second acc)) 1 : Nat))))) ((first walked), ((second walked), (prim length (project state stack) : Nat))) (project state stack) : (Pending * ((List Event) * Nat))); (let produced : (Nat * (List Event)) := (prim iterate (fun [folded] (emitted : (Nat * (List Event))) => (((first emitted) + 1), (cons (ctor Event.compressed (run (rootPending (first folded) (first emitted)))) (second emitted)))) (prim quotient (outLen + 63) 64 0 : Nat) (0, (first (second folded))) : (Nat * (List Event))); (record Trace {mode := (modeOf base), inputLen := ((prim multiply (project state chunkCount) 1024 : Nat) + (prim length tail : Nat)), outLen := outLen, keyWords := key, modeFlags := base, prelude := (project state prelude), events := (reverseEvents (second produced))}))))))),
   axioms: [Quot.sound, propext],
   executable: true
 }
@@ -543,30 +741,66 @@ definition{
 }
 
 definition{
-  name: outputBytes,
-  parameters: [node : Output, outLen : Nat],
+  name: pairUp,
+  parameters: [pieces : (List Bytes)],
+  result: (List Bytes),
+  body: (let paired : ((Option Bytes) * (List Bytes)) := (prim list_fold (fun (acc : ((Option Bytes) * (List Bytes))) (piece : Bytes) => (match (first acc)
+    | Option.some held => ((ctor Option.none [Bytes]), (cons (prim append held piece : Bytes) (second acc)))
+    | Option.none => ((ctor Option.some [Bytes] piece), (second acc)))) ((ctor Option.none [Bytes]), (nil Bytes)) pieces : ((Option Bytes) * (List Bytes))); (let whole : (List Bytes) := (match (first paired)
+    | Option.some held => (cons held (second paired))
+    | Option.none => (second paired)); (prim list_fold (fun (reversed : (List Bytes)) (piece : Bytes) => (cons piece reversed)) (nil Bytes) whole : (List Bytes)))),
+  executable: true
+}
+
+definition{
+  name: concatAll,
+  parameters: [pieces : (List Bytes)],
   result: Bytes,
-  body: (let blocks : Nat := (prim quotient (outLen + 63) 64 0 : Nat); (let produced : (Nat * Bytes) := (prim iterate (fun [node] (stream : (Nat * Bytes)) => (((first stream) + 1), (prim append (second stream) (blockBytes (rootWords node (first stream))) : Bytes))) blocks (0, 0x) : (Nat * Bytes)); (match (prim slice (second produced) 0 outLen : (Option Bytes))
+  body: (match (first (prim iterate_until (fun (level : (List Bytes)) => (if ((prim length level : Nat) <=? 1) then (ctor Option.none [(List Bytes)]) else (ctor Option.some [(List Bytes)] (pairUp level)))) 64 pieces : ((List Bytes) * Bool)))
+    | List.cons whole rest => whole
+    | List.nil => 0x),
+  executable: true
+}
+
+definition{
+  name: digestOf,
+  parameters: [trace : Trace],
+  result: Bytes,
+  body: (let blocks : (List Bytes) := (prim list_fold (fun (acc : (List Bytes)) (event : Event) => (match event
+    | Event.compressed node => (if ((project node role) =? 2) then (cons (blockBytes (project node output)) acc) else acc)
+    | Event.pushed entry depth => acc
+    | Event.popped entry depth => acc)) (nil Bytes) (project trace events) : (List Bytes)); (let whole : Bytes := (concatAll (prim list_fold (fun (reversed : (List Bytes)) (piece : Bytes) => (cons piece reversed)) (nil Bytes) blocks : (List Bytes))); (match (prim slice whole 0 (project trace outLen) : (Option Bytes))
     | Option.some trimmed => trimmed
-    | Option.none => (second produced)))),
+    | Option.none => whole))),
   axioms: [Quot.sound, propext],
   executable: true
 }
 
 definition{
-  name: finalize,
-  parameters: [state : Hasher, outLen : Nat],
-  result: Bytes,
-  body: (outputBytes (finalOutput state) outLen),
-  axioms: [Quot.sound, propext],
+  name: rootWordsAt,
+  parameters: [trace : Trace, index : Nat],
+  result: Words16,
+  body: (prim list_fold (fun [index] (acc : Words16) (event : Event) => (match event
+    | Event.compressed node => (if ((project node role) =? 2) then (if ((project node index) =? index) then (project node output) else acc) else acc)
+    | Event.pushed entry depth => acc
+    | Event.popped entry depth => acc)) (record Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)}) (project trace events) : Words16),
   executable: true
 }
 
 definition{
-  name: contextKey,
+  name: contextTrace,
   parameters: [context : Bytes],
-  result: Cv,
-  body: (cvOf (rootWords (finalOutput (update (hasherWith (iv) (flagDeriveKeyContext)) context)) 0)),
+  result: Trace,
+  body: (finalTrace (update (hasherWith (iv) (flagDeriveKeyContext)) context) 32),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: deriveHasher,
+  parameters: [context : Bytes],
+  result: Hasher,
+  body: (let derived : Trace := (contextTrace context); (record Hasher {keyWords := (cvOf (rootWordsAt derived 0)), modeFlags := (flagDeriveKeyMaterial), chunkCount := 0, pending := 0x, stack := (nil Entry), log := (nil Event), prelude := (project derived events)})),
   axioms: [Quot.sound, propext],
   executable: true
 }
@@ -578,7 +812,18 @@ definition{
   body: (match mode
     | Mode.hashMode => (ctor Result.ok [Hasher, Blake3Error] (hasherWith (iv) (0 : UInt32)))
     | Mode.keyedMode secret => (if ((prim length secret : Nat) =? 32) then (ctor Result.ok [Hasher, Blake3Error] (hasherWith (keyWordsOf secret) (flagKeyedHash))) else (ctor Result.error [Hasher, Blake3Error] (ctor Blake3Error.keyLength (prim length secret : Nat))))
-    | Mode.deriveMode context => (ctor Result.ok [Hasher, Blake3Error] (hasherWith (contextKey context) (flagDeriveKeyMaterial)))),
+    | Mode.deriveMode context => (ctor Result.ok [Hasher, Blake3Error] (deriveHasher context))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: traceOf,
+  parameters: [mode : Mode, pieces : (List Bytes), outLen : Nat],
+  result: (Result Trace Blake3Error),
+  body: (match (start mode)
+    | Result.ok initial => (ctor Result.ok [Trace, Blake3Error] (finalTrace (prim list_fold (fun (state : Hasher) (piece : Bytes) => (update state piece)) initial pieces : Hasher) outLen))
+    | Result.error refused => (ctor Result.error [Trace, Blake3Error] refused)),
   axioms: [Quot.sound, propext],
   executable: true
 }
@@ -614,8 +859,8 @@ definition{
   name: hashPieces,
   parameters: [mode : Mode, pieces : (List Bytes), outLen : Nat],
   result: (Result Bytes Blake3Error),
-  body: (match (start mode)
-    | Result.ok initial => (ctor Result.ok [Bytes, Blake3Error] (finalize (prim list_fold (fun (state : Hasher) (piece : Bytes) => (update state piece)) initial pieces : Hasher) outLen))
+  body: (match (traceOf mode pieces outLen)
+    | Result.ok trace => (ctor Result.ok [Bytes, Blake3Error] (digestOf trace))
     | Result.error refused => (ctor Result.error [Bytes, Blake3Error] refused)),
   axioms: [Quot.sound, propext],
   executable: true,
@@ -626,7 +871,7 @@ definition{
   name: hash,
   parameters: [message : Bytes, outLen : Nat],
   result: Bytes,
-  body: (finalize (update (hasherWith (iv) (0 : UInt32)) message) outLen),
+  body: (digestOf (finalTrace (update (hasherWith (iv) (0 : UInt32)) message) outLen)),
   axioms: [Quot.sound, propext],
   executable: true,
   production: {effects: [allocation, overflow], targets: [rust-std]}
@@ -646,8 +891,8 @@ definition{
   name: keyedHash,
   parameters: [secret : Bytes, message : Bytes, outLen : Nat],
   result: (Result Bytes Blake3Error),
-  body: (match (start (ctor Mode.keyedMode secret))
-    | Result.ok initial => (ctor Result.ok [Bytes, Blake3Error] (finalize (update initial message) outLen))
+  body: (match (traceOf (ctor Mode.keyedMode secret) (cons message (nil Bytes)) outLen)
+    | Result.ok trace => (ctor Result.ok [Bytes, Blake3Error] (digestOf trace))
     | Result.error refused => (ctor Result.error [Bytes, Blake3Error] refused)),
   axioms: [Quot.sound, propext],
   executable: true,
@@ -658,7 +903,7 @@ definition{
   name: deriveKey,
   parameters: [context : Bytes, material : Bytes, outLen : Nat],
   result: Bytes,
-  body: (finalize (update (hasherWith (contextKey context) (flagDeriveKeyMaterial)) material) outLen),
+  body: (digestOf (finalTrace (update (deriveHasher context) material) outLen)),
   axioms: [Quot.sound, propext],
   executable: true,
   production: {effects: [allocation, overflow], targets: [rust-std]}

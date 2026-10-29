@@ -27,3 +27,6 @@ criterion/
 # LexLean and Lake build state; the committed evidence is export/.
 /lexlean/.lexlean/
 /lexlean/.lake/
+/lexlean-trace/.lexlean/
+/lexlean-trace/.lake/
+__pycache__/

@@ -31,6 +31,8 @@ dependencies = [
  "blake3_hash_hex",
  "blake3_hash_pieces",
  "blake3_keyed_hash",
+ "blake3_trace_address",
+ "blake3_trace_file",
  "serde_json",
  "sha2",
 ]
@@ -53,6 +55,14 @@ version = "0.1.0"
 
 [[package]]
 name = "blake3_keyed_hash"
+version = "0.1.0"
+
+[[package]]
+name = "blake3_trace_address"
+version = "0.1.0"
+
+[[package]]
+name = "blake3_trace_file"
 version = "0.1.0"
 
 [[package]]

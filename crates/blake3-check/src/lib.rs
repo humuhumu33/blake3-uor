@@ -8,6 +8,8 @@
 
 use std::path::{Path, PathBuf};
 
+pub mod trace;
+
 /// The official key, from `test_vectors.json`.
 pub const OFFICIAL_KEY: &[u8; 32] = b"whats the Elvish word for friend";
 /// The official derive-key context, from `test_vectors.json`.
@@ -232,4 +234,168 @@ pub fn oracle(mode: Mode<'_>, message: &[u8], out_len: usize) -> Vec<u8> {
     let mut out = vec![0; out_len];
     hasher.finalize_xof().fill(&mut out);
     out
+}
+
+/// Why `checkTrace` refused a trace: its `TraceError` constructor and the
+/// file offset it names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TraceRejection {
+    /// The constructor, as named in the model.
+    pub kind: &'static str,
+    /// The offset in the trace file where the check failed.
+    pub at: u64,
+}
+
+/// The constructors of the model's `TraceError`, in declaration order.
+pub const TRACE_ERRORS: [&str; 12] = [
+    "malformed",
+    "digestSet",
+    "unknownLabel",
+    "load",
+    "provenance",
+    "permutation",
+    "step",
+    "bit",
+    "link",
+    "output",
+    "digest",
+    "rootMismatch",
+];
+
+macro_rules! lex_mode {
+    ($pkg:ident, $mode:expr) => {
+        match $mode {
+            Mode::Hash => $pkg::Adt0::C0,
+            Mode::Keyed(key) => $pkg::Adt0::C1($pkg::Bytes::lit(key)),
+            Mode::Derive(context) => $pkg::Adt0::C2($pkg::Bytes::lit(context)),
+        }
+    };
+}
+
+macro_rules! lex_pieces_of {
+    ($pkg:ident, $pieces:expr) => {
+        $pieces.iter().rev().fold($pkg::List::nil(), |tail, piece| {
+            $pkg::List::cons($pkg::Bytes::lit(piece), tail)
+        })
+    };
+}
+
+/// The serialised trace at `level` (0 tree, 1 word, 2 bit), through the
+/// exported package; a key that is not 32 bytes gives its length.
+pub fn lex_trace_file(
+    mode: Mode<'_>,
+    pieces: &[&[u8]],
+    out_len: usize,
+    level: u64,
+) -> Result<Vec<u8>, u64> {
+    let run = blake3_trace_file::run(
+        lex_mode!(blake3_trace_file, mode),
+        lex_pieces_of!(blake3_trace_file, pieces),
+        width(out_len),
+        level,
+    );
+    match run.expect("no overflow below 2^64") {
+        Ok(file) => Ok(file.octets().to_vec()),
+        Err(blake3_trace_file::Adt1::C0(len)) => Err(len),
+    }
+}
+
+/// The trace's address: the root blob's DigestSet (BLAKE3 then SHA-256).
+pub fn lex_trace_address(mode: Mode<'_>, pieces: &[&[u8]], out_len: usize) -> Result<Vec<u8>, u64> {
+    let run = blake3_trace_address::run(
+        lex_mode!(blake3_trace_address, mode),
+        lex_pieces_of!(blake3_trace_address, pieces),
+        width(out_len),
+    );
+    match run.expect("no overflow below 2^64") {
+        Ok(address) => Ok(address.octets().to_vec()),
+        Err(blake3_trace_address::Adt1::C0(len)) => Err(len),
+    }
+}
+
+/// `checkTrace` on each file, run by the LexLean calculus engine in the
+/// committed Prism image (`prism/IMAGE`, `prism/registry/`) through
+/// `prism/trace-checks.mjs`: the root's DigestSet, or the refusal. The
+/// checker has no rust-std export (`docs/trace.md`), so this spawns `node`.
+pub fn engine_check(files: &[Vec<u8>]) -> Vec<Result<Vec<u8>, TraceRejection>> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static RUN: AtomicUsize = AtomicUsize::new(0);
+    let root = root();
+    let image =
+        std::fs::read_to_string(root.join("prism/IMAGE")).expect("prism/IMAGE names the image");
+    let dir = std::env::temp_dir().join(format!(
+        "blake3-check-{}-{}",
+        std::process::id(),
+        RUN.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&dir).expect("a scratch directory");
+    let paths: Vec<PathBuf> = files
+        .iter()
+        .enumerate()
+        .map(|(k, file)| {
+            let path = dir.join(format!("trace-{k}.bin"));
+            std::fs::write(&path, file).expect("write a trace");
+            path
+        })
+        .collect();
+    let out = std::process::Command::new("node")
+        .arg(root.join("prism/trace-checks.mjs"))
+        .arg(image.trim())
+        .arg("--registry")
+        .arg(root.join("prism/registry"))
+        .arg("--check-files")
+        .args(&paths)
+        .output()
+        .expect("node runs the image's engine");
+    std::fs::remove_dir_all(&dir).expect("remove the scratch directory");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8(out.stdout).expect("UTF-8");
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(
+        lines.len(),
+        files.len(),
+        "one verdict per file:
+{text}"
+    );
+    lines
+        .iter()
+        .map(|line| {
+            let parts: Vec<&str> = line.split(' ').collect();
+            match parts.as_slice() {
+                ["OK", hex] => Ok(from_hex(hex)),
+                ["ERROR", kind, at] => Err(TraceRejection {
+                    kind: TRACE_ERRORS
+                        .iter()
+                        .find(|k| *k == kind)
+                        .expect("a TraceError constructor"),
+                    at: at.parse().expect("an offset"),
+                }),
+                _ => panic!("unexpected verdict {line}"),
+            }
+        })
+        .collect()
+}
+
+/// A trace checked against its claimed origin: `checkTrace` accepts it, and
+/// its root DigestSet equals the one `traceAddress` computes for this mode,
+/// input and output length. Both halves are the model's; only the equality of
+/// two byte strings is done here.
+pub fn check_against(
+    mode: Mode<'_>,
+    pieces: &[&[u8]],
+    out_len: usize,
+    file: &[u8],
+) -> Result<Vec<u8>, TraceRejection> {
+    let root = engine_check(&[file.to_vec()]).remove(0)?;
+    match lex_trace_address(mode, pieces, out_len) {
+        Ok(address) if address == root => Ok(root),
+        _ => Err(TraceRejection {
+            kind: "rootMismatch",
+            at: 0,
+        }),
+    }
 }

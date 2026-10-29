@@ -1,0 +1,764 @@
+\begin{lexlean}{Blake3Trace}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3Uor.Blake3}
+\importmodule{LexLeanStd.Sha256}
+\title{Natural number addition}
+\begin{semanticmodule}
+inductive{
+  name: TraceError,
+  type_parameters: [],
+  parameters: [],
+  constructors: [
+    {name: malformed, fields: [Nat]},
+    {name: digestSet, fields: [Nat]},
+    {name: unknownLabel, fields: [Nat]},
+    {name: load, fields: [Nat]},
+    {name: provenance, fields: [Nat]},
+    {name: permutation, fields: [Nat]},
+    {name: step, fields: [Nat]},
+    {name: bit, fields: [Nat]},
+    {name: link, fields: [Nat]},
+    {name: output, fields: [Nat]},
+    {name: digest, fields: [Nat]},
+    {name: rootMismatch, fields: [Nat]}
+  ]
+}
+
+definition{
+  name: u8,
+  parameters: [n : Nat],
+  result: Bytes,
+  body: (Blake3Uor.Blake3::byteOf (Blake3Uor.Blake3::wordOfNat n 8)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: u32,
+  parameters: [n : Nat],
+  result: Bytes,
+  body: (Blake3Uor.Blake3::wordBytes (Blake3Uor.Blake3::wordOfNat n 32)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: u64,
+  parameters: [n : Nat],
+  result: Bytes,
+  body: (prim append (Blake3Uor.Blake3::wordBytes (Blake3Uor.Blake3::counterLow n)) (Blake3Uor.Blake3::wordBytes (Blake3Uor.Blake3::counterHigh n)) : Bytes),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: wordBE,
+  parameters: [w : UInt32],
+  result: Bytes,
+  body: (prim append (Blake3Uor.Blake3::byteOf (prim bit_and (Blake3Uor.Blake3::shiftRight w (24 : UInt32)) (255 : UInt32) : UInt32)) (prim append (Blake3Uor.Blake3::byteOf (prim bit_and (Blake3Uor.Blake3::shiftRight w (16 : UInt32)) (255 : UInt32) : UInt32)) (prim append (Blake3Uor.Blake3::byteOf (prim bit_and (Blake3Uor.Blake3::shiftRight w (8 : UInt32)) (255 : UInt32) : UInt32)) (Blake3Uor.Blake3::byteOf (prim bit_and (Blake3Uor.Blake3::shiftRight w (0 : UInt32)) (255 : UInt32) : UInt32)) : Bytes) : Bytes) : Bytes),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: shaBytes,
+  parameters: [blob : Bytes],
+  result: Bytes,
+  body: (let d : LexLeanStd.Sha256::Digest := (LexLeanStd.Sha256::sha256 blob); (prim append (wordBE (project d h0)) (prim append (wordBE (project d h1)) (prim append (wordBE (project d h2)) (prim append (wordBE (project d h3)) (prim append (wordBE (project d h4)) (prim append (wordBE (project d h5)) (prim append (wordBE (project d h6)) (wordBE (project d h7)) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: digestSetOf,
+  parameters: [blob : Bytes],
+  result: Bytes,
+  body: (prim append (Blake3Uor.Blake3::hash blob 32) (shaBytes blob) : Bytes),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: labelOf,
+  parameters: [ds : Bytes],
+  result: Bytes,
+  body: (match (prim slice ds 0 32 : (Option Bytes))
+    | Option.some head => head
+    | Option.none => ds),
+  executable: true
+}
+
+definition{
+  name: cvBytes,
+  parameters: [c : Blake3Uor.Blake3::Cv],
+  result: Bytes,
+  body: (prim append (Blake3Uor.Blake3::wordBytes (project c h0)) (prim append (Blake3Uor.Blake3::wordBytes (project c h1)) (prim append (Blake3Uor.Blake3::wordBytes (project c h2)) (prim append (Blake3Uor.Blake3::wordBytes (project c h3)) (prim append (Blake3Uor.Blake3::wordBytes (project c h4)) (prim append (Blake3Uor.Blake3::wordBytes (project c h5)) (prim append (Blake3Uor.Blake3::wordBytes (project c h6)) (Blake3Uor.Blake3::wordBytes (project c h7)) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: nodeState,
+  parameters: [n : Blake3Uor.Blake3::Node],
+  result: Blake3Uor.Blake3::Words16,
+  body: (Blake3Uor.Blake3::initialState (project n chain) (project n counterLo) (project n counterHi) (project n blockLen) (project n flags)),
+  executable: true
+}
+
+definition{
+  name: checkpointBlob,
+  parameters: [n : Blake3Uor.Blake3::Node],
+  result: Bytes,
+  body: (Blake3Uor.Blake3::concatAll (cons 0x01 (cons (u8 (project n role)) (cons (u64 (project n origin)) (cons (u64 (project n span)) (cons (u64 (project n index)) (cons (u64 (project n offset)) (cons (Blake3Uor.Blake3::blockBytes (nodeState n)) (cons (Blake3Uor.Blake3::blockBytes (project n block)) (nil Bytes)))))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: entryOf,
+  parameters: [blob : Bytes, ds : Bytes],
+  result: Bytes,
+  body: (prim append (u32 (prim length blob : Nat)) (prim append blob ds : Bytes) : Bytes),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: bitAt,
+  parameters: [w : UInt32, i : UInt32],
+  result: UInt32,
+  body: (prim bit_and (Blake3Uor.Blake3::shiftRight w i) (1 : UInt32) : UInt32),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: adderByte,
+  parameters: [a : UInt32, b : UInt32, c : UInt32],
+  result: UInt32,
+  body: (let s : UInt32 := (prim bit_xor (prim bit_xor a b : UInt32) c : UInt32); (let co : UInt32 := (prim bit_or (prim bit_or (prim bit_and a b : UInt32) (prim bit_and a c : UInt32) : UInt32) (prim bit_and b c : UInt32) : UInt32); (prim bit_or a (prim bit_or (Blake3Uor.Blake3::shiftLeft b (1 : UInt32)) (prim bit_or (Blake3Uor.Blake3::shiftLeft c (2 : UInt32)) (prim bit_or (Blake3Uor.Blake3::shiftLeft s (3 : UInt32)) (Blake3Uor.Blake3::shiftLeft co (4 : UInt32)) : UInt32) : UInt32) : UInt32) : UInt32))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: carryOut,
+  parameters: [a : UInt32, b : UInt32, c : UInt32],
+  result: UInt32,
+  body: (prim bit_or (prim bit_or (prim bit_and a b : UInt32) (prim bit_and a c : UInt32) : UInt32) (prim bit_and b c : UInt32) : UInt32),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: xorByte,
+  parameters: [a : UInt32, b : UInt32],
+  result: UInt32,
+  body: (prim bit_or a (prim bit_or (Blake3Uor.Blake3::shiftLeft b (1 : UInt32)) (Blake3Uor.Blake3::shiftLeft (prim bit_xor a b : UInt32) (2 : UInt32)) : UInt32) : UInt32),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: bitByte,
+  parameters: [v : UInt32],
+  result: Bytes,
+  body: (if (prim equal (prim bit_and v (16 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x00 else 0x01) else (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x02 else 0x03)) else (if (prim equal (prim bit_and v (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x04 else 0x05) else (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x06 else 0x07))) else (if (prim equal (prim bit_and v (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x08 else 0x09) else (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x0a else 0x0b)) else (if (prim equal (prim bit_and v (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x0c else 0x0d) else (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x0e else 0x0f)))) else (if (prim equal (prim bit_and v (8 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x10 else 0x11) else (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x12 else 0x13)) else (if (prim equal (prim bit_and v (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x14 else 0x15) else (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x16 else 0x17))) else (if (prim equal (prim bit_and v (4 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x18 else 0x19) else (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x1a else 0x1b)) else (if (prim equal (prim bit_and v (2 : UInt32) : UInt32) (0 : UInt32) : Bool) then (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x1c else 0x1d) else (if (prim equal (prim bit_and v (1 : UInt32) : UInt32) (0 : UInt32) : Bool) then 0x1e else 0x1f))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: addBits,
+  parameters: [x : UInt32, y : UInt32],
+  result: Bytes,
+  body: (second (second (prim iterate (fun [x, y] (walk : (UInt32 * (UInt32 * Bytes))) => (let i : UInt32 := (first walk); (let a : UInt32 := (bitAt x i); (let b : UInt32 := (bitAt y i); (let c : UInt32 := (first (second walk)); ((Blake3Uor.Blake3::add i (1 : UInt32)), ((carryOut a b c), (prim append (second (second walk)) (bitByte (adderByte a b c)) : Bytes)))))))) 32 ((0 : UInt32), ((0 : UInt32), 0x)) : (UInt32 * (UInt32 * Bytes))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: xorBits,
+  parameters: [x : UInt32, y : UInt32],
+  result: Bytes,
+  body: (second (prim iterate (fun [x, y] (walk : (UInt32 * Bytes)) => (let i : UInt32 := (first walk); ((Blake3Uor.Blake3::add i (1 : UInt32)), (prim append (second walk) (bitByte (xorByte (bitAt x i) (bitAt y i))) : Bytes)))) 32 ((0 : UInt32), 0x) : (UInt32 * Bytes))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: kindCode,
+  parameters: [kind : Blake3Uor.Blake3::Op],
+  result: Nat,
+  body: (match kind
+    | Blake3Uor.Blake3::Op.opAdd => 0
+    | Blake3Uor.Blake3::Op.opAddMsg => 1
+    | Blake3Uor.Blake3::Op.opXor => 2
+    | Blake3Uor.Blake3::Op.opRor => 3
+    | Blake3Uor.Blake3::Op.opXorCv => 4),
+  executable: true
+}
+
+definition{
+  name: stepBits,
+  parameters: [level : Nat, s : Blake3Uor.Blake3::Step],
+  result: Bytes,
+  body: (if (level <? 2) then 0x else (match (project s op)
+    | Blake3Uor.Blake3::Op.opAdd => (addBits (project s left) (project s right))
+    | Blake3Uor.Blake3::Op.opAddMsg => (addBits (project s left) (project s right))
+    | Blake3Uor.Blake3::Op.opXor => (xorBits (project s left) (project s right))
+    | Blake3Uor.Blake3::Op.opRor => 0x
+    | Blake3Uor.Blake3::Op.opXorCv => (xorBits (project s left) (project s right)))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: stepPiece,
+  parameters: [level : Nat, s : Blake3Uor.Blake3::Step],
+  result: Bytes,
+  body: (Blake3Uor.Blake3::concatAll (cons (u8 (project s round)) (cons (u8 (project s g)) (cons (u8 (project s index)) (cons (u8 (kindCode (project s op))) (cons (u8 (project s dest)) (cons (u8 (project s source)) (cons (Blake3Uor.Blake3::wordBytes (project s left)) (cons (Blake3Uor.Blake3::wordBytes (project s right)) (cons (Blake3Uor.Blake3::wordBytes (project s result)) (cons (stepBits level s) (nil Bytes)))))))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: mapBytes,
+  parameters: [r : Nat],
+  result: Bytes,
+  body: (if (r <? 3) then (if (r <? 1) then 0x000102030405060708090a0b0c0d0e0f else (if (r <? 2) then 0x0206030a0700040d010b0c05090e0f08 else 0x03040a0c0d02070e060509000b0f0801)) else (if (r <? 5) then (if (r <? 4) then 0x0a070c090e030d0f04000b0205080106 else 0x0c0d090b0f0a0e080702050300010604) else (if (r <? 6) then 0x090e0b05080c0f010d03000a02060407 else 0x0b0f0500010908060e0a020c0304070d))),
+  executable: true
+}
+
+definition{
+  name: roundStart,
+  parameters: [s : Blake3Uor.Blake3::Step],
+  result: Bool,
+  body: (((project s round) <? 7) && (((project s g) =? 0) && ((project s index) =? 0))),
+  executable: true
+}
+
+definition{
+  name: sectionBytes,
+  parameters: [level : Nat, n : Blake3Uor.Blake3::Node],
+  result: Bytes,
+  body: (let t : Blake3Uor.Blake3::CompressionTrace := (Blake3Uor.Blake3::compressTrace (project n chain) (project n block) (project n counterLo) (project n counterHi) (project n blockLen) (project n flags)); (Blake3Uor.Blake3::concatAll (cons (u64 (project n offset)) (cons (Blake3Uor.Blake3::byteOf (project n blockLen)) (cons (Blake3Uor.Blake3::blockBytes (project n block)) (cons 0x000102030405060708090a0b0c0d0e0f (prim list_fold (fun [level] (acc : (List Bytes)) (s : Blake3Uor.Blake3::Step) => (cons (if (roundStart s) then (prim append (mapBytes (project s round)) (stepPiece level s) : Bytes) else (stepPiece level s)) acc)) (cons (Blake3Uor.Blake3::blockBytes (Blake3Uor.Blake3::compressOut t)) (nil Bytes)) (project t log) : (List Bytes)))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+structure{
+  name: Build,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: level, type: Nat},
+    {name: entries, type: (List Bytes)},
+    {name: count, type: Nat},
+    {name: stack, type: (List Bytes)},
+    {name: chunkLabels, type: (List Bytes)},
+    {name: chunkSize, type: Nat},
+    {name: waiting, type: (Option Bytes)},
+    {name: current, type: Bytes},
+    {name: outputs, type: (List Bytes)},
+    {name: events, type: (List Bytes)},
+    {name: eventCount, type: Nat}
+  ]
+}
+
+definition{
+  name: emit,
+  parameters: [b : Build, blob : Bytes, extra : Bytes],
+  result: (Build * Bytes),
+  body: (let ds : Bytes := (digestSetOf blob); ((record Build {level := (project b level), entries := (cons (prim append (entryOf blob ds) extra : Bytes) (project b entries)), count := ((project b count) + 1), stack := (project b stack), chunkLabels := (project b chunkLabels), chunkSize := (project b chunkSize), waiting := (project b waiting), current := (project b current), outputs := (project b outputs), events := (project b events), eventCount := (project b eventCount)}), (labelOf ds))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: joinLabels,
+  parameters: [labels : (List Bytes)],
+  result: Bytes,
+  body: (Blake3Uor.Blake3::concatAll (prim list_fold (fun (reversed : (List Bytes)) (piece : Bytes) => (cons piece reversed)) (nil Bytes) labels : (List Bytes))),
+  executable: true
+}
+
+definition{
+  name: chunkBlob,
+  parameters: [chunk : Nat, b : Build, tail : Bytes],
+  result: Bytes,
+  body: (prim append 0x02 (prim append (u64 chunk) (prim append (u8 (project b chunkSize)) (prim append (joinLabels (project b chunkLabels)) tail : Bytes) : Bytes) : Bytes) : Bytes),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: buildStep,
+  parameters: [b : Build, event : Blake3Uor.Blake3::Event],
+  result: Build,
+  body: (match event
+    | Blake3Uor.Blake3::Event.compressed n => (let cp : Bytes := (checkpointBlob n); (let made : (Build * Bytes) := (emit b cp (if ((project b level) =? 0) then 0x else (sectionBytes (project b level) n))); (let nb1 : Build := (first made); (let cl : Bytes := (second made); (let ev : (List Bytes) := (cons (prim append 0x00 cl : Bytes) (project nb1 events)); (if ((project n role) =? 0) then (if (prim equal (prim bit_and (project n flags) (Blake3Uor.Blake3::flagChunkEnd) : UInt32) (Blake3Uor.Blake3::flagChunkEnd) : Bool) then (let closed : (Build * Bytes) := (emit nb1 (chunkBlob (project n origin) (record Build {level := (project nb1 level), entries := (project nb1 entries), count := (project nb1 count), stack := (project nb1 stack), chunkLabels := (cons cl (project nb1 chunkLabels)), chunkSize := ((project nb1 chunkSize) + 1), waiting := (project nb1 waiting), current := (project nb1 current), outputs := (project nb1 outputs), events := (project nb1 events), eventCount := (project nb1 eventCount)}) (prim append 0x01 (cvBytes (Blake3Uor.Blake3::cvOf (project n output))) : Bytes)) 0x); (let nb2 : Build := (first closed); (record Build {level := (project nb2 level), entries := (project nb2 entries), count := (project nb2 count), stack := (project nb2 stack), chunkLabels := (nil Bytes), chunkSize := 0, waiting := (project nb2 waiting), current := (second closed), outputs := (project nb2 outputs), events := ev, eventCount := ((project nb1 eventCount) + 1)}))) else (record Build {level := (project nb1 level), entries := (project nb1 entries), count := (project nb1 count), stack := (project nb1 stack), chunkLabels := (cons cl (project nb1 chunkLabels)), chunkSize := ((project nb1 chunkSize) + 1), waiting := (project nb1 waiting), current := (project nb1 current), outputs := (project nb1 outputs), events := ev, eventCount := ((project nb1 eventCount) + 1)})) else (if ((project n role) =? 1) then (match (project nb1 waiting)
+      | Option.some held => (let joined : (Build * Bytes) := (emit nb1 (prim append 0x03 (prim append (u64 (project n origin)) (prim append (u64 (project n span)) (prim append held (prim append (project nb1 current) (prim append 0x01 (prim append cl (cvBytes (Blake3Uor.Blake3::cvOf (project n output))) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) : Bytes) 0x); (let nb2 : Build := (first joined); (record Build {level := (project nb2 level), entries := (project nb2 entries), count := (project nb2 count), stack := (project nb2 stack), chunkLabels := (project nb2 chunkLabels), chunkSize := (project nb2 chunkSize), waiting := (ctor Option.none [Bytes]), current := (second joined), outputs := (project nb2 outputs), events := ev, eventCount := ((project nb1 eventCount) + 1)})))
+      | Option.none => (record Build {level := (project nb1 level), entries := (project nb1 entries), count := (project nb1 count), stack := (project nb1 stack), chunkLabels := (project nb1 chunkLabels), chunkSize := (project nb1 chunkSize), waiting := (project nb1 waiting), current := (project nb1 current), outputs := (project nb1 outputs), events := ev, eventCount := ((project nb1 eventCount) + 1)})) else (let put : (Build * Bytes) := (emit nb1 (prim append 0x04 (prim append (u64 (project n index)) (prim append cl (Blake3Uor.Blake3::blockBytes (project n output)) : Bytes) : Bytes) : Bytes) 0x); (let nb2 : Build := (first put); (record Build {level := (project nb2 level), entries := (project nb2 entries), count := (project nb2 count), stack := (project nb2 stack), chunkLabels := (project nb2 chunkLabels), chunkSize := (project nb2 chunkSize), waiting := (project nb2 waiting), current := (project nb2 current), outputs := (cons (second put) (project nb2 outputs)), events := ev, eventCount := ((project nb1 eventCount) + 1)}))))))))))
+    | Blake3Uor.Blake3::Event.pushed e depth => (record Build {level := (project b level), entries := (project b entries), count := (project b count), stack := (cons (project b current) (project b stack)), chunkLabels := (project b chunkLabels), chunkSize := (project b chunkSize), waiting := (project b waiting), current := (project b current), outputs := (project b outputs), events := (cons (prim append 0x01 (prim append (u8 depth) (prim append (u64 (project e origin)) (prim append (u64 (project e span)) (cvBytes (project e cv)) : Bytes) : Bytes) : Bytes) : Bytes) (project b events)), eventCount := ((project b eventCount) + 1)})
+    | Blake3Uor.Blake3::Event.popped e depth => (match (project b stack)
+      | List.cons top rest => (record Build {level := (project b level), entries := (project b entries), count := (project b count), stack := rest, chunkLabels := (project b chunkLabels), chunkSize := (project b chunkSize), waiting := (ctor Option.some [Bytes] top), current := (project b current), outputs := (project b outputs), events := (cons (prim append 0x02 (prim append (u8 depth) (prim append (u64 (project e origin)) (prim append (u64 (project e span)) (cvBytes (project e cv)) : Bytes) : Bytes) : Bytes) : Bytes) (project b events)), eventCount := ((project b eventCount) + 1)})
+      | List.nil => (record Build {level := (project b level), entries := (project b entries), count := (project b count), stack := (project b stack), chunkLabels := (project b chunkLabels), chunkSize := (project b chunkSize), waiting := (project b waiting), current := (project b current), outputs := (project b outputs), events := (cons (prim append 0x02 (prim append (u8 depth) (prim append (u64 (project e origin)) (prim append (u64 (project e span)) (cvBytes (project e cv)) : Bytes) : Bytes) : Bytes) : Bytes) (project b events)), eventCount := ((project b eventCount) + 1)}))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: emptyBuild,
+  parameters: [level : Nat, entries : (List Bytes), count : Nat],
+  result: Build,
+  body: (record Build {level := level, entries := entries, count := count, stack := (nil Bytes), chunkLabels := (nil Bytes), chunkSize := 0, waiting := (ctor Option.none [Bytes]), current := 0x, outputs := (nil Bytes), events := (nil Bytes), eventCount := 0}),
+  executable: true
+}
+
+definition{
+  name: finishBuild,
+  parameters: [b : Build, trace : Blake3Uor.Blake3::Trace, inputSet : Bytes, context : Bytes],
+  result: (Build * Bytes),
+  body: (let chunks : Nat := (if ((project trace inputLen) =? 0) then 1 else (prim quotient ((project trace inputLen) + 1023) 1024 0 : Nat)); (let nodeBlob : Bytes := (match (project b waiting)
+    | Option.some held => (prim append 0x03 (prim append (u64 0) (prim append (u64 chunks) (prim append held (prim append (project b current) 0x00 : Bytes) : Bytes) : Bytes) : Bytes) : Bytes)
+    | Option.none => (chunkBlob 0 b 0x00)); (let node : (Build * Bytes) := (emit b nodeBlob 0x); (let log : (Build * Bytes) := (emit (first node) (prim append 0x05 (prim append (u64 (project b eventCount)) (joinLabels (project b events)) : Bytes) : Bytes) 0x); (let mode : Nat := (project trace mode); (emit (first log) (Blake3Uor.Blake3::concatAll (cons 0x0601 (cons (u8 mode) (cons (u64 (project trace inputLen)) (cons (u64 (project trace outLen)) (cons inputSet (cons (second node) (cons (second log) (cons (if (mode =? 2) then context else 0x) (cons (u64 (prim length (project b outputs) : Nat)) (cons (joinLabels (project b outputs)) (cons (Blake3Uor.Blake3::digestOf trace) (nil Bytes))))))))))))) 0x)))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: buildTrace,
+  parameters: [prior : Build, trace : Blake3Uor.Blake3::Trace, inputSet : Bytes, context : Bytes],
+  result: (Build * Bytes),
+  body: (finishBuild (prim list_fold (fun (b : Build) (event : Blake3Uor.Blake3::Event) => (buildStep b event)) (emptyBuild (project prior level) (project prior entries) (project prior count)) (project trace events) : Build) trace inputSet context),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: traceBuild,
+  parameters: [mode : Blake3Uor.Blake3::Mode, pieces : (List Bytes), outLen : Nat, level : Nat],
+  result: (Result (Build * Bytes) Blake3Uor.Blake3::Blake3Error),
+  body: (let input : Bytes := (Blake3Uor.Blake3::concatAll pieces); (match (Blake3Uor.Blake3::traceOf mode pieces outLen)
+    | Result.ok trace => (ctor Result.ok [(Build * Bytes), Blake3Uor.Blake3::Blake3Error] (match mode
+      | Blake3Uor.Blake3::Mode.deriveMode context => (let earlier : (Build * Bytes) := (buildTrace (emptyBuild level (nil Bytes) 0) (record Blake3Uor.Blake3::Trace {mode := 3, inputLen := (prim length context : Nat), outLen := 32, keyWords := (Blake3Uor.Blake3::iv), modeFlags := (Blake3Uor.Blake3::flagDeriveKeyContext), prelude := (nil Blake3Uor.Blake3::Event), events := (project trace prelude)}) (digestSetOf context) 0x); (buildTrace (first earlier) trace (digestSetOf input) (second earlier)))
+      | Blake3Uor.Blake3::Mode.hashMode => (buildTrace (emptyBuild level (nil Bytes) 0) trace (digestSetOf input) 0x)
+      | Blake3Uor.Blake3::Mode.keyedMode secret => (buildTrace (emptyBuild level (nil Bytes) 0) trace (digestSetOf input) 0x)))
+    | Result.error refused => (ctor Result.error [(Build * Bytes), Blake3Uor.Blake3::Blake3Error] refused))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: traceFile,
+  parameters: [mode : Blake3Uor.Blake3::Mode, pieces : (List Bytes), outLen : Nat, level : Nat],
+  result: (Result Bytes Blake3Uor.Blake3::Blake3Error),
+  body: (match (traceBuild mode pieces outLen level)
+    | Result.ok built => (ctor Result.ok [Bytes, Blake3Uor.Blake3::Blake3Error] (prim append 0x4233545241434531 (prim append (u8 level) (prim append (u64 (project (first built) count)) (joinLabels (project (first built) entries)) : Bytes) : Bytes) : Bytes))
+    | Result.error refused => (ctor Result.error [Bytes, Blake3Uor.Blake3::Blake3Error] refused)),
+  axioms: [Quot.sound, propext],
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+
+definition{
+  name: traceAddress,
+  parameters: [mode : Blake3Uor.Blake3::Mode, pieces : (List Bytes), outLen : Nat],
+  result: (Result Bytes Blake3Uor.Blake3::Blake3Error),
+  body: (match (traceBuild mode pieces outLen 0)
+    | Result.ok built => (ctor Result.ok [Bytes, Blake3Uor.Blake3::Blake3Error] (match (project (first built) entries)
+      | List.cons last rest => (match (prim slice last (prim subtract (prim length last : Nat) 64 : Nat) 64 : (Option Bytes))
+        | Option.some set => set
+        | Option.none => 0x)
+      | List.nil => 0x))
+    | Result.error refused => (ctor Result.error [Bytes, Blake3Uor.Blake3::Blake3Error] refused)),
+  axioms: [Quot.sound, propext],
+  executable: true,
+  production: {effects: [allocation, overflow], targets: [rust-std]}
+}
+
+definition{
+  name: natOfWord,
+  parameters: [w : UInt32],
+  result: Nat,
+  body: (second (second (prim iterate (fun [w] (walk : (UInt32 * (Nat * Nat))) => (let i : UInt32 := (first walk); ((Blake3Uor.Blake3::add i (1 : UInt32)), (((first (second walk)) + (first (second walk))), (if (prim equal (bitAt w i) (1 : UInt32) : Bool) then ((second (second walk)) + (first (second walk))) else (second (second walk))))))) 32 ((0 : UInt32), (1, 0)) : (UInt32 * (Nat * Nat))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: rd8,
+  parameters: [data : Bytes, pos : Nat],
+  result: Nat,
+  body: (natOfWord (Blake3Uor.Blake3::byteAt data (prim length data : Nat) pos)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: rd32,
+  parameters: [data : Bytes, pos : Nat],
+  result: UInt32,
+  body: (Blake3Uor.Blake3::blockWord data (prim length data : Nat) pos),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: rd64,
+  parameters: [data : Bytes, pos : Nat],
+  result: Nat,
+  body: ((natOfWord (rd32 data pos)) + (prim multiply (natOfWord (rd32 data (pos + 4))) 4294967296 : Nat)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: cutAt,
+  parameters: [data : Bytes, pos : Nat, len : Nat],
+  result: (Option Bytes),
+  body: (prim slice data pos len : (Option Bytes)),
+  executable: true
+}
+
+definition{
+  name: words16At,
+  parameters: [data : Bytes, pos : Nat],
+  result: Blake3Uor.Blake3::Words16,
+  body: (record Blake3Uor.Blake3::Words16 {v0 := (rd32 data (pos + 0)), v1 := (rd32 data (pos + 4)), v2 := (rd32 data (pos + 8)), v3 := (rd32 data (pos + 12)), v4 := (rd32 data (pos + 16)), v5 := (rd32 data (pos + 20)), v6 := (rd32 data (pos + 24)), v7 := (rd32 data (pos + 28)), v8 := (rd32 data (pos + 32)), v9 := (rd32 data (pos + 36)), v10 := (rd32 data (pos + 40)), v11 := (rd32 data (pos + 44)), v12 := (rd32 data (pos + 48)), v13 := (rd32 data (pos + 52)), v14 := (rd32 data (pos + 56)), v15 := (rd32 data (pos + 60))}),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: cvAt,
+  parameters: [data : Bytes, pos : Nat],
+  result: Blake3Uor.Blake3::Cv,
+  body: (record Blake3Uor.Blake3::Cv {h0 := (rd32 data (pos + 0)), h1 := (rd32 data (pos + 4)), h2 := (rd32 data (pos + 8)), h3 := (rd32 data (pos + 12)), h4 := (rd32 data (pos + 16)), h5 := (rd32 data (pos + 20)), h6 := (rd32 data (pos + 24)), h7 := (rd32 data (pos + 28))}),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: wordsEq,
+  parameters: [a : Blake3Uor.Blake3::Words16, b : Blake3Uor.Blake3::Words16],
+  result: Bool,
+  body: ((prim equal (project a v0) (project b v0) : Bool) && ((prim equal (project a v1) (project b v1) : Bool) && ((prim equal (project a v2) (project b v2) : Bool) && ((prim equal (project a v3) (project b v3) : Bool) && ((prim equal (project a v4) (project b v4) : Bool) && ((prim equal (project a v5) (project b v5) : Bool) && ((prim equal (project a v6) (project b v6) : Bool) && ((prim equal (project a v7) (project b v7) : Bool) && ((prim equal (project a v8) (project b v8) : Bool) && ((prim equal (project a v9) (project b v9) : Bool) && ((prim equal (project a v10) (project b v10) : Bool) && ((prim equal (project a v11) (project b v11) : Bool) && ((prim equal (project a v12) (project b v12) : Bool) && ((prim equal (project a v13) (project b v13) : Bool) && ((prim equal (project a v14) (project b v14) : Bool) && (prim equal (project a v15) (project b v15) : Bool)))))))))))))))),
+  executable: true
+}
+
+definition{
+  name: cvEq,
+  parameters: [a : Blake3Uor.Blake3::Cv, b : Blake3Uor.Blake3::Cv],
+  result: Bool,
+  body: ((prim equal (project a h0) (project b h0) : Bool) && ((prim equal (project a h1) (project b h1) : Bool) && ((prim equal (project a h2) (project b h2) : Bool) && ((prim equal (project a h3) (project b h3) : Bool) && ((prim equal (project a h4) (project b h4) : Bool) && ((prim equal (project a h5) (project b h5) : Bool) && ((prim equal (project a h6) (project b h6) : Bool) && (prim equal (project a h7) (project b h7) : Bool)))))))),
+  executable: true
+}
+
+definition{
+  name: sameBytes,
+  parameters: [a : (Option Bytes), b : (Option Bytes)],
+  result: Bool,
+  body: (match a
+    | Option.some x => (match b | Option.some y => (prim equal x y : Bool) | Option.none => false)
+    | Option.none => false),
+  executable: true
+}
+
+definition{
+  name: bitsHold,
+  parameters: [data : Bytes, pos : Nat, kind : Nat, x : UInt32, y : UInt32, z : UInt32],
+  result: Bool,
+  body: (second (prim iterate (fun [data, kind, pos, x, y, z] (walk : ((UInt32 * (UInt32 * Nat)) * Bool)) => (let i : UInt32 := (first (first walk)); (let c : UInt32 := (first (second (first walk))); (let k : Nat := (second (second (first walk))); (let a : UInt32 := (bitAt x i); (let b : UInt32 := (bitAt y i); (let want : UInt32 := (if ((kind =? 0) || (kind =? 1)) then (adderByte a b c) else (xorByte a b)); (let sum : UInt32 := (if ((kind =? 0) || (kind =? 1)) then (prim bit_xor (prim bit_xor a b : UInt32) c : UInt32) else (prim bit_xor a b : UInt32)); (((Blake3Uor.Blake3::add i (1 : UInt32)), ((carryOut a b c), (k + 1))), (if (second walk) then ((prim equal (Blake3Uor.Blake3::byteAt data (prim length data : Nat) (pos + k)) want : Bool) && (prim equal sum (bitAt z i) : Bool)) else false)))))))))) 32 (((0 : UInt32), ((0 : UInt32), 0)), true) : ((UInt32 * (UInt32 * Nat)) * Bool))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: hasBits,
+  parameters: [level : Nat, kind : Nat],
+  result: Bool,
+  body: (if (level <? 2) then false else (if (kind =? 3) then false else true)),
+  executable: true
+}
+
+definition{
+  name: stepHolds,
+  parameters: [data : Bytes, pos : Nat, s : Blake3Uor.Blake3::Step],
+  result: Bool,
+  body: (((rd8 data pos) =? (project s round)) && (((rd8 data (pos + 1)) =? (project s g)) && (((rd8 data (pos + 2)) =? (project s index)) && (((rd8 data (pos + 3)) =? (kindCode (project s op))) && (((rd8 data (pos + 4)) =? (project s dest)) && (((rd8 data (pos + 5)) =? (project s source)) && ((prim equal (rd32 data (pos + 6)) (project s left) : Bool) && ((prim equal (rd32 data (pos + 10)) (project s right) : Bool) && (prim equal (rd32 data (pos + 14)) (project s result) : Bool))))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: ivHolds,
+  parameters: [s0 : Blake3Uor.Blake3::Words16],
+  result: Bool,
+  body: ((prim equal (project s0 v8) (1779033703 : UInt32) : Bool) && ((prim equal (project s0 v9) (3144134277 : UInt32) : Bool) && ((prim equal (project s0 v10) (1013904242 : UInt32) : Bool) && (prim equal (project s0 v11) (2773480762 : UInt32) : Bool)))),
+  executable: true
+}
+
+definition{
+  name: checkSection,
+  parameters: [
+    data : Bytes,
+    pos : Nat,
+    level : Nat,
+    s0 : Blake3Uor.Blake3::Words16,
+    m : Blake3Uor.Blake3::Words16
+  ],
+  result: (Result Nat TraceError),
+  body: (let len : Nat := (rd8 data (pos + 8)); (let cv : Blake3Uor.Blake3::Cv := (record Blake3Uor.Blake3::Cv {h0 := (project s0 v0), h1 := (project s0 v1), h2 := (project s0 v2), h3 := (project s0 v3), h4 := (project s0 v4), h5 := (project s0 v5), h6 := (project s0 v6), h7 := (project s0 v7)}); (if ((len =? (natOfWord (project s0 v14))) && ((wordsEq (words16At data (pos + 9)) m) && (second (prim iterate (fun [data, len, pos] (walk : (Nat * Bool)) => (((first walk) + 1), (if (second walk) then (if ((first walk) <? len) then true else ((rd8 data ((pos + 9) + (first walk))) =? 0)) else false))) 64 (0, true) : (Nat * Bool))))) then (if ((sameBytes (cutAt data (pos + 73) 16) (ctor Option.some [Bytes] 0x000102030405060708090a0b0c0d0e0f)) && (ivHolds s0)) then (match (second (prim iterate (fun [cv, data, level, m] (walk : (Nat * (Result (Nat * Blake3Uor.Blake3::Machine) TraceError))) => (((first walk) + 1), (match (second walk)
+      | Result.ok at => (let k : Nat := (first walk); (let p : Nat := (first at); (let mapped : (Result Nat TraceError) := (if ((k <? 784) && ((prim remainder k 112 0 : Nat) =? 0)) then (if (sameBytes (cutAt data p 16) (ctor Option.some [Bytes] (mapBytes (prim quotient k 112 0 : Nat)))) then (ctor Result.ok [Nat, TraceError] (p + 16)) else (ctor Result.error [Nat, TraceError] (ctor TraceError.permutation p))) else (ctor Result.ok [Nat, TraceError] p)); (let moved : Blake3Uor.Blake3::Machine := (Blake3Uor.Blake3::machineStep cv m (record Blake3Uor.Blake3::Machine {state := (project (second at) state), out := (project (second at) out), log := (nil Blake3Uor.Blake3::Step)}) k); (match mapped
+        | Result.ok here => (match (project moved log)
+          | List.cons s rest => (if (stepHolds data here s) then (if (if (hasBits level (kindCode (project s op))) then (bitsHold data (here + 18) (kindCode (project s op)) (project s left) (project s right) (project s result)) else true) then (ctor Result.ok [(Nat * Blake3Uor.Blake3::Machine), TraceError] ((here + (if (hasBits level (kindCode (project s op))) then 50 else 18)), moved)) else (ctor Result.error [(Nat * Blake3Uor.Blake3::Machine), TraceError] (ctor TraceError.bit (here + 18)))) else (ctor Result.error [(Nat * Blake3Uor.Blake3::Machine), TraceError] (ctor TraceError.step here)))
+          | List.nil => (ctor Result.error [(Nat * Blake3Uor.Blake3::Machine), TraceError] (ctor TraceError.step here)))
+        | Result.error failed => (ctor Result.error [(Nat * Blake3Uor.Blake3::Machine), TraceError] failed))))))
+      | Result.error failed => (ctor Result.error [(Nat * Blake3Uor.Blake3::Machine), TraceError] failed)))) 800 (0, (ctor Result.ok [(Nat * Blake3Uor.Blake3::Machine), TraceError] ((pos + 89), (record Blake3Uor.Blake3::Machine {state := s0, out := (record Blake3Uor.Blake3::Words16 {v0 := (0 : UInt32), v1 := (0 : UInt32), v2 := (0 : UInt32), v3 := (0 : UInt32), v4 := (0 : UInt32), v5 := (0 : UInt32), v6 := (0 : UInt32), v7 := (0 : UInt32), v8 := (0 : UInt32), v9 := (0 : UInt32), v10 := (0 : UInt32), v11 := (0 : UInt32), v12 := (0 : UInt32), v13 := (0 : UInt32), v14 := (0 : UInt32), v15 := (0 : UInt32)}), log := (nil Blake3Uor.Blake3::Step)})))) : (Nat * (Result (Nat * Blake3Uor.Blake3::Machine) TraceError))))
+    | Result.ok done => (if (wordsEq (words16At data (first done)) (project (second done) out)) then (ctor Result.ok [Nat, TraceError] ((first done) + 64)) else (ctor Result.error [Nat, TraceError] (ctor TraceError.output (first done))))
+    | Result.error failed => (ctor Result.error [Nat, TraceError] failed)) else (ctor Result.error [Nat, TraceError] (ctor TraceError.provenance (pos + 73)))) else (ctor Result.error [Nat, TraceError] (ctor TraceError.load pos))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+structure{
+  name: Seen,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: label, type: Bytes},
+    {name: kind, type: Nat},
+    {name: cv, type: Bytes},
+    {name: state, type: Bytes},
+    {name: block, type: Bytes}
+  ]
+}
+
+structure{
+  name: Check,
+  type_parameters: [],
+  parameters: [],
+  fields: [
+    {name: pos, type: Nat},
+    {name: level, type: Nat},
+    {name: seen, type: (List Seen)},
+    {name: root, type: Bytes},
+    {name: last, type: Nat}
+  ]
+}
+
+definition{
+  name: lookup,
+  parameters: [seen : (List Seen), wanted : Bytes],
+  result: (Option Seen),
+  body: (prim list_fold (fun [wanted] (found : (Option Seen)) (s : Seen) => (if (prim equal (project s label) wanted : Bool) then (ctor Option.some [Seen] s) else found)) (ctor Option.none [Seen]) seen : (Option Seen)),
+  executable: true
+}
+
+definition{
+  name: known,
+  parameters: [seen : (List Seen), blob : Bytes, at : Nat, kinds : (List Nat)],
+  result: (Option Seen),
+  body: (match (cutAt blob at 32)
+    | Option.some wanted => (match (lookup seen wanted)
+      | Option.some s => (if (prim list_fold (fun [s] (hit : Bool) (k : Nat) => (hit || ((project s kind) =? k))) false kinds : Bool) then (ctor Option.some [Seen] s) else (ctor Option.none [Seen]))
+      | Option.none => (ctor Option.none [Seen]))
+    | Option.none => (ctor Option.none [Seen])),
+  executable: true
+}
+
+definition{
+  name: replayOut,
+  parameters: [s0 : Blake3Uor.Blake3::Words16, m : Blake3Uor.Blake3::Words16],
+  result: Blake3Uor.Blake3::Words16,
+  body: (Blake3Uor.Blake3::compress (Blake3Uor.Blake3::cvOf s0) m (project s0 v12) (project s0 v13) (project s0 v14) (project s0 v15)),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: bytesAt,
+  parameters: [blob : Bytes, at : Nat, len : Nat],
+  result: Bytes,
+  body: (match (cutAt blob at len) | Option.some got => got | Option.none => 0x),
+  executable: true
+}
+
+definition{
+  name: replayBytes,
+  parameters: [state : Bytes, block : Bytes],
+  result: Bytes,
+  body: (Blake3Uor.Blake3::blockBytes (replayOut (words16At state 0) (words16At block 0))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: checkpointCase,
+  parameters: [
+    data : Bytes,
+    ck : Check,
+    pos : Nat,
+    len : Nat,
+    next : Nat,
+    blob : Bytes,
+    label : Bytes,
+    kind : Nat,
+    ds : Bytes
+  ],
+  result: (Result Check TraceError),
+  body: (let s0 : Blake3Uor.Blake3::Words16 := (words16At blob 34); (let m : Blake3Uor.Blake3::Words16 := (words16At blob 98); (if ((len =? 162) && (ivHolds s0)) then (if ((project ck level) =? 0) then (ctor Result.ok [Check, TraceError] (record Check {pos := next, level := (project ck level), seen := (cons (record Seen {label := label, kind := 1, cv := 0x, state := (bytesAt blob 34 64), block := (bytesAt blob 98 64)}) (project ck seen)), root := (project ck root), last := kind})) else (match (checkSection data next (project ck level) s0 m)
+    | Result.ok moved => (ctor Result.ok [Check, TraceError] (record Check {pos := moved, level := (project ck level), seen := (cons (record Seen {label := label, kind := 1, cv := 0x, state := (bytesAt blob 34 64), block := (bytesAt blob 98 64)}) (project ck seen)), root := (project ck root), last := kind}))
+    | Result.error failed => (ctor Result.error [Check, TraceError] failed))) else (ctor Result.error [Check, TraceError] (ctor TraceError.malformed pos))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: chunkCase,
+  parameters: [
+    data : Bytes,
+    ck : Check,
+    pos : Nat,
+    len : Nat,
+    next : Nat,
+    blob : Bytes,
+    label : Bytes,
+    kind : Nat,
+    ds : Bytes
+  ],
+  result: (Result Check TraceError),
+  body: (let n : Nat := (rd8 blob 9); (let tail : Nat := (10 + (prim multiply 32 n : Nat)); (let seen : (List Seen) := (project ck seen); (if (second (prim iterate (fun [blob, seen] (walk : (Nat * Bool)) => (((first walk) + 1), ((second walk) && (match (known seen blob (10 + (prim multiply 32 (first walk) : Nat)) (cons 1 (nil Nat)))
+    | Option.some found => true
+    | Option.none => false)))) n (0, true) : (Nat * Bool))) then (if ((rd8 blob tail) =? 1) then (match (known seen blob (prim subtract tail 32 : Nat) (cons 1 (nil Nat)))
+    | Option.some last => (if (sameBytes (cutAt blob (tail + 1) 32) (cutAt (replayBytes (project last state) (project last block)) 0 32)) then (ctor Result.ok [Check, TraceError] (record Check {pos := next, level := (project ck level), seen := (cons (record Seen {label := label, kind := 2, cv := (bytesAt blob (tail + 1) 32), state := 0x, block := 0x}) (project ck seen)), root := (project ck root), last := kind})) else (ctor Result.error [Check, TraceError] (ctor TraceError.link pos)))
+    | Option.none => (ctor Result.error [Check, TraceError] (ctor TraceError.unknownLabel pos))) else (ctor Result.ok [Check, TraceError] (record Check {pos := next, level := (project ck level), seen := (cons (record Seen {label := label, kind := 2, cv := 0x, state := 0x, block := 0x}) (project ck seen)), root := (project ck root), last := kind}))) else (ctor Result.error [Check, TraceError] (ctor TraceError.unknownLabel pos)))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: parentCase,
+  parameters: [
+    data : Bytes,
+    ck : Check,
+    pos : Nat,
+    len : Nat,
+    next : Nat,
+    blob : Bytes,
+    label : Bytes,
+    kind : Nat,
+    ds : Bytes
+  ],
+  result: (Result Check TraceError),
+  body: (match (known (project ck seen) blob 17 (cons 2 (cons 3 (nil Nat))))
+    | Option.some l => (match (known (project ck seen) blob 49 (cons 2 (cons 3 (nil Nat))))
+      | Option.some rr => (if ((rd8 blob 81) =? 1) then (match (known (project ck seen) blob 82 (cons 1 (nil Nat)))
+        | Option.some cp => (if ((prim equal (project cp block) (prim append (project l cv) (project rr cv) : Bytes) : Bool) && (sameBytes (cutAt blob 114 32) (cutAt (replayBytes (project cp state) (project cp block)) 0 32))) then (ctor Result.ok [Check, TraceError] (record Check {pos := next, level := (project ck level), seen := (cons (record Seen {label := label, kind := 3, cv := (bytesAt blob 114 32), state := 0x, block := 0x}) (project ck seen)), root := (project ck root), last := kind})) else (ctor Result.error [Check, TraceError] (ctor TraceError.link pos)))
+        | Option.none => (ctor Result.error [Check, TraceError] (ctor TraceError.unknownLabel pos))) else (ctor Result.ok [Check, TraceError] (record Check {pos := next, level := (project ck level), seen := (cons (record Seen {label := label, kind := 3, cv := 0x, state := 0x, block := 0x}) (project ck seen)), root := (project ck root), last := kind})))
+      | Option.none => (ctor Result.error [Check, TraceError] (ctor TraceError.unknownLabel pos)))
+    | Option.none => (ctor Result.error [Check, TraceError] (ctor TraceError.unknownLabel pos))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: outputCase,
+  parameters: [
+    data : Bytes,
+    ck : Check,
+    pos : Nat,
+    len : Nat,
+    next : Nat,
+    blob : Bytes,
+    label : Bytes,
+    kind : Nat,
+    ds : Bytes
+  ],
+  result: (Result Check TraceError),
+  body: (match (known (project ck seen) blob 9 (cons 1 (nil Nat)))
+    | Option.some cp => (if (prim equal (bytesAt blob 41 64) (replayBytes (project cp state) (project cp block)) : Bool) then (ctor Result.ok [Check, TraceError] (record Check {pos := next, level := (project ck level), seen := (cons (record Seen {label := label, kind := 4, cv := 0x, state := 0x, block := (bytesAt blob 41 64)}) (project ck seen)), root := (project ck root), last := kind})) else (ctor Result.error [Check, TraceError] (ctor TraceError.output pos)))
+    | Option.none => (ctor Result.error [Check, TraceError] (ctor TraceError.unknownLabel pos))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: eventsCase,
+  parameters: [
+    data : Bytes,
+    ck : Check,
+    pos : Nat,
+    len : Nat,
+    next : Nat,
+    blob : Bytes,
+    label : Bytes,
+    kind : Nat,
+    ds : Bytes
+  ],
+  result: (Result Check TraceError),
+  body: (let walked : (Nat * Bool) := (second (prim iterate (fun [blob, ck] (walk : (Nat * (Nat * Bool))) => (let at : Nat := (first (second walk)); (((first walk) + 1), (if ((rd8 blob at) =? 0) then ((at + 33), ((second (second walk)) && (match (known (project ck seen) blob (at + 1) (cons 1 (nil Nat)))
+    | Option.some found => true
+    | Option.none => false))) else ((at + 50), (second (second walk))))))) (rd64 blob 1) (0, (9, true)) : (Nat * (Nat * Bool)))); (if ((second walked) && ((first walked) =? len)) then (ctor Result.ok [Check, TraceError] (record Check {pos := next, level := (project ck level), seen := (cons (record Seen {label := label, kind := 5, cv := 0x, state := 0x, block := 0x}) (project ck seen)), root := (project ck root), last := kind})) else (ctor Result.error [Check, TraceError] (ctor TraceError.unknownLabel pos)))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: rootCase,
+  parameters: [
+    data : Bytes,
+    ck : Check,
+    pos : Nat,
+    len : Nat,
+    next : Nat,
+    blob : Bytes,
+    label : Bytes,
+    kind : Nat,
+    ds : Bytes
+  ],
+  result: (Result Check TraceError),
+  body: (let mode : Nat := (rd8 blob 2); (let outLen : Nat := (rd64 blob 11); (let at : Nat := (if (mode =? 2) then 179 else 147); (let count : Nat := (rd64 blob at); (let seen : (List Seen) := (project ck seen); (let outputs : Bytes := (Blake3Uor.Blake3::concatAll (second (prim iterate (fun [at, blob, seen] (walk : (Nat * (List Bytes))) => (((first walk) + 1), (match (known seen blob ((at + 8) + (prim multiply 32 (first walk) : Nat)) (cons 4 (nil Nat)))
+    | Option.some o => (prim append (second walk) (cons (project o block) (nil Bytes)) : (List Bytes))
+    | Option.none => (second walk)))) count (0, (nil Bytes)) : (Nat * (List Bytes))))); (let digestAt : Nat := ((at + 8) + (prim multiply 32 count : Nat)); (if ((match (known seen blob 83 (cons 2 (cons 3 (nil Nat))))
+    | Option.some found => true
+    | Option.none => false) && ((match (known seen blob 115 (cons 5 (nil Nat)))
+    | Option.some found => true
+    | Option.none => false) && ((if (mode =? 2) then (match (known seen blob 147 (cons 6 (nil Nat)))
+    | Option.some found => true
+    | Option.none => false) else true) && (second (prim iterate (fun [at, blob, seen] (walk : (Nat * Bool)) => (((first walk) + 1), ((second walk) && (match (known seen blob ((at + 8) + (prim multiply 32 (first walk) : Nat)) (cons 4 (nil Nat)))
+    | Option.some found => true
+    | Option.none => false)))) count (0, true) : (Nat * Bool)))))) then (if (((digestAt + outLen) =? len) && (sameBytes (cutAt blob digestAt outLen) (cutAt outputs 0 outLen))) then (ctor Result.ok [Check, TraceError] (record Check {pos := next, level := (project ck level), seen := (cons (record Seen {label := label, kind := 6, cv := 0x, state := 0x, block := 0x}) (project ck seen)), root := ds, last := kind})) else (ctor Result.error [Check, TraceError] (ctor TraceError.digest pos))) else (ctor Result.error [Check, TraceError] (ctor TraceError.unknownLabel pos)))))))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: checkEntry,
+  parameters: [data : Bytes, ck : Check],
+  result: (Result Check TraceError),
+  body: (let pos : Nat := (project ck pos); (let len : Nat := (natOfWord (rd32 data pos)); (let next : Nat := ((pos + 68) + len); (match (cutAt data (pos + 4) len)
+    | Option.some blob => (match (cutAt data ((pos + 4) + len) 64)
+      | Option.some ds => (if (prim equal ds (digestSetOf blob) : Bool) then (let label : Bytes := (labelOf ds); (let kind : Nat := (rd8 blob 0); (if (kind =? 1) then (checkpointCase data ck pos len next blob label kind ds) else (if (kind =? 2) then (chunkCase data ck pos len next blob label kind ds) else (if (kind =? 3) then (parentCase data ck pos len next blob label kind ds) else (if (kind =? 4) then (outputCase data ck pos len next blob label kind ds) else (if (kind =? 5) then (eventsCase data ck pos len next blob label kind ds) else (if (kind =? 6) then (rootCase data ck pos len next blob label kind ds) else (ctor Result.error [Check, TraceError] (ctor TraceError.malformed pos)))))))))) else (ctor Result.error [Check, TraceError] (ctor TraceError.digestSet pos)))
+      | Option.none => (ctor Result.error [Check, TraceError] (ctor TraceError.malformed pos)))
+    | Option.none => (ctor Result.error [Check, TraceError] (ctor TraceError.malformed pos)))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+
+definition{
+  name: checkTrace,
+  parameters: [claimed : Bytes],
+  result: (Result Bytes TraceError),
+  body: (let level : Nat := (rd8 claimed 8); (let count : Nat := (rd64 claimed 9); (if ((sameBytes (cutAt claimed 0 8) (ctor Option.some [Bytes] 0x4233545241434531)) && ((level <=? 2) && ((prim multiply count 68 : Nat) <=? (prim length claimed : Nat)))) then (match (prim iterate (fun [claimed] (acc : (Result Check TraceError)) => (match acc
+      | Result.ok ck => (checkEntry claimed ck)
+      | Result.error failed => (ctor Result.error [Check, TraceError] failed))) count (ctor Result.ok [Check, TraceError] (record Check {pos := 17, level := level, seen := (nil Seen), root := 0x, last := 0})) : (Result Check TraceError))
+    | Result.ok ck => (if (((project ck last) =? 6) && ((project ck pos) =? (prim length claimed : Nat))) then (ctor Result.ok [Bytes, TraceError] (project ck root)) else (ctor Result.error [Bytes, TraceError] (ctor TraceError.malformed (project ck pos))))
+    | Result.error failed => (ctor Result.error [Bytes, TraceError] failed)) else (ctor Result.error [Bytes, TraceError] (ctor TraceError.malformed 0))))),
+  axioms: [Quot.sound, propext],
+  executable: true
+}
+\end{semanticmodule}
+\end{lexlean}

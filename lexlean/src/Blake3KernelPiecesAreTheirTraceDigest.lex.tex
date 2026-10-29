@@ -1,0 +1,16 @@
+\begin{lexlean}{Blake3KernelPiecesAreTheirTraceDigest}
+\useglossary{lexlean.std.nat@1.2.0}
+\importmodule{Blake3}
+\title{Natural number addition}
+\begin{semanticmodule}
+theorem{
+  name: pieces_are_their_trace_digest,
+  parameters: [mode : Blake3::Mode, pieces : (List Bytes), outLen : Nat],
+  statement: ((Blake3::hashPieces mode pieces outLen) = (match (Blake3::traceOf mode pieces outLen)
+    | Result.ok trace => (ctor Result.ok [Bytes, Blake3::Blake3Error] (Blake3::digestOf trace))
+    | Result.error refused => (ctor Result.error [Bytes, Blake3::Blake3Error] refused))),
+  proof: reflexivity{},
+  axioms: [Quot.sound, propext]
+}
+\end{semanticmodule}
+\end{lexlean}
